@@ -6,7 +6,6 @@ from typing import AsyncGenerator, Dict, Any
 from google.adk.agents import LlmAgent, BaseAgent, ParallelAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
-from ..tools.desktop_commander import desktop_commander_toolset
 from .. import config
 from ..utils.callbacks import ensure_end_of_output
 from ..utils.model_loader import get_llm_model
@@ -465,7 +464,24 @@ def get_junior_validator_agent():
         from ..tools.mock_tools import mock_desktop_commander_toolset
         tools = mock_desktop_commander_toolset
     else:
-        tools = [desktop_commander_toolset]
+        # Create MCP toolset inline as per ADK documentation
+        from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
+        from mcp.client.stdio import StdioServerParameters
+        import os
+        
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
+        tools = [
+            MCPToolset(
+                connection_params=StdioConnectionParams(
+                    server_params=StdioServerParameters(
+                        command=config.DESKTOP_COMMANDER_COMMAND,
+                        args=config.DESKTOP_COMMANDER_ARGS,
+                        cwd=project_root
+                    )
+                )
+            )
+        ]
         
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
@@ -514,7 +530,24 @@ def get_senior_validator_agent():
         from ..tools.mock_tools import mock_desktop_commander_toolset
         tools = mock_desktop_commander_toolset
     else:
-        tools = [desktop_commander_toolset]
+        # Create MCP toolset inline as per ADK documentation
+        from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
+        from mcp.client.stdio import StdioServerParameters
+        import os
+        
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
+        tools = [
+            MCPToolset(
+                connection_params=StdioConnectionParams(
+                    server_params=StdioServerParameters(
+                        command=config.DESKTOP_COMMANDER_COMMAND,
+                        args=config.DESKTOP_COMMANDER_ARGS,
+                        cwd=project_root
+                    )
+                )
+            )
+        ]
         
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),

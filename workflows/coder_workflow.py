@@ -10,7 +10,6 @@ from google.adk.events import Event
 from ..agents.coder import get_coder_agent
 from ..agents.validators import get_junior_validator_agent, get_senior_validator_agent, MetaValidatorCheckAgent, get_parallel_final_validation_agent
 from .. import config
-from ..tools.desktop_commander import desktop_commander_toolset
 from ..utils.model_loader import get_llm_model
 
 

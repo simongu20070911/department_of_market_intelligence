@@ -8,7 +8,6 @@ from ..agents.orchestrator import get_orchestrator_agent
 from ..agents.experiment_executor import get_experiment_executor_agent
 from ..agents.validators import get_junior_validator_agent, get_senior_validator_agent, MetaValidatorCheckAgent, get_parallel_final_validation_agent
 from .. import config
-from ..tools.desktop_commander import desktop_commander_toolset # Need for file reading
 from .coder_workflow import get_coder_workflow
 
 class ImplementationWorkflowAgent(BaseAgent):

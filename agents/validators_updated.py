@@ -9,7 +9,6 @@ from typing import AsyncGenerator
 from google.adk.agents import LlmAgent, BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
-from ..tools.desktop_commander import desktop_commander_toolset
 from .. import config
 from ..utils.callbacks import ensure_end_of_output
 from ..utils.model_loader import get_llm_model
