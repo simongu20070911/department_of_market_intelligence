@@ -37,6 +37,7 @@ ENABLE_CONTEXT_AWARE_VALIDATION = True  # Use context-aware validators
 # This assumes the npx command is in the system's PATH
 DESKTOP_COMMANDER_COMMAND = "npx"
 DESKTOP_COMMANDER_ARGS = ["-y", "@wonderwhy-er/desktop-commander"]
+MCP_TIMEOUT_SECONDS = 30  # Increase timeout for MCP operations
 
 # --- Output Validation ---
 END_OF_OUTPUT_MARKER = "<end of output>"
@@ -68,6 +69,6 @@ CHECKPOINTS_DIR = get_checkpoints_dir()
 VERBOSE_LOGGING = False  # Set to True for detailed debug output, False for cleaner output
 
 # --- Execution Modes ---
-DRY_RUN_MODE = True  # Set to True to validate workflows without executing expensive operations
+DRY_RUN_MODE = False  # Set to True to validate workflows without executing expensive operations
 MAX_DRY_RUN_ITERATIONS = 2  # Limit iterations in dry run mode to catch bugs early
-DRY_RUN_SKIP_LLM = True  # Skip LLM calls entirely in dry run mode
+DRY_RUN_SKIP_LLM = False  # Skip LLM calls entirely in dry run mode

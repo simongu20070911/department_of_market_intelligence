@@ -1,0 +1,46 @@
+{
+  "checkpoint_id": "snapshot_test_files_created_2025-07-28T11-29-07-549852+00-00",
+  "task_id": "snapshot_test_task",
+  "timestamp": "2025-07-28T11:29:07.549852+00:00",
+  "phase": "snapshot_test",
+  "step": "files_created",
+  "session_state": {
+    "task_id": "snapshot_test_task",
+    "current_date": "2025-07-28",
+    "task_file_path": null,
+    "current_phase": "planning",
+    "current_task": "test_snapshots",
+    "plan_artifact_name": null,
+    "plan_version": 0,
+    "implementation_manifest_artifact": null,
+    "results_extraction_script_artifact": null,
+    "artifact_to_validate": null,
+    "validation_info": {
+      "validation_version": 0,
+      "validation_status": "pending",
+      "junior_critique_artifact": null,
+      "senior_critique_artifact": null,
+      "parallel_validation_critical_issues": [],
+      "consolidated_validation_issues": []
+    },
+    "execution_info": {
+      "execution_status": "pending",
+      "error_type": null,
+      "error_details": null,
+      "suggested_fix": null,
+      "execution_log_artifact": null
+    },
+    "coder_subtask": null,
+    "all_coding_tasks": [],
+    "final_report_artifact": null,
+    "final_results_artifact": null,
+    "last_checkpoint_time": null,
+    "checkpoint_version": 0,
+    "metadata": {}
+  },
+  "metadata": {
+    "file_count": 3
+  },
+  "agent_execution_count": 0,
+  "uses_session_state_model": true
+}

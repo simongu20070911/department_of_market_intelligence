@@ -7,8 +7,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from utils.state_model import SessionState, TaskInfo
-from utils.state_adapter import StateAdapter, StateProxy
+from ..utils.state_model import SessionState, TaskInfo
+from ..utils.state_adapter import StateAdapter, StateProxy
 
 
 def test_session_state_in_workflow():

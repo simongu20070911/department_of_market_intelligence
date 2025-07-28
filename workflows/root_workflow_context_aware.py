@@ -12,6 +12,7 @@ from .research_planning_workflow_context_aware import (
 )
 from .implementation_workflow_context_aware import ImplementationWorkflowAgentContextAware
 from ..agents.chief_researcher import get_chief_researcher_agent
+from ..utils.state_adapter import StateAdapter
 from .. import config
 
 
@@ -84,6 +85,27 @@ class RootWorkflowAgentContextAware(BaseAgent):
         session_state.current_phase = "planning"
         session_state.current_task = "generate_initial_plan"
         
+        # Set time context - required for agent templates
+        from datetime import datetime
+        current_date = datetime.now()
+        session_state.metadata['current_date'] = current_date.strftime('%Y-%m-%d')
+        session_state.metadata['current_datetime'] = current_date.strftime('%Y-%m-%d %H:%M:%S')
+        session_state.metadata['current_year'] = str(current_date.year)
+        session_state.metadata['current_month'] = str(current_date.month)
+        
+        # Set file paths - use absolute paths to prevent MCP path resolution issues
+        if not session_state.task_file_path:
+            import os
+            session_state.task_file_path = os.path.join(config.TASKS_DIR, 'sample_research_task.md')
+        session_state.metadata['outputs_dir'] = config.OUTPUTS_DIR
+        
+        # Initialize validation
+        session_state.artifact_to_validate = f"{config.OUTPUTS_DIR}/research_plan_v0.md"
+        session_state.validation_info.validation_version = 0
+        
+        # Replace session state for template access
+        ctx.session.state = StateAdapter.create_proxy_state(session_state)
+        
         # Create checkpoint before planning
         checkpoint_manager.create_checkpoint(
             phase="planning",
@@ -95,12 +117,6 @@ class RootWorkflowAgentContextAware(BaseAgent):
         # Run the planning workflow
         async for event in self._planning_workflow.run_async(ctx):
             yield event
-        
-        # Check if planning was successful
-        validation_status = state_proxy.get('validation_status', 'unknown')
-        if validation_status != 'approved':
-            print(f"❌ Planning validation failed with status: {validation_status}")
-            return
         
         print("✅ Research plan approved with context-aware validation!")
         

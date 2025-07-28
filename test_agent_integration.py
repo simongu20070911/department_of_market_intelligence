@@ -11,9 +11,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from utils.state_model import SessionState
-from utils.state_adapter import StateAdapter, StateProxy
-from utils.checkpoint_manager import CheckpointManager
+from .utils.state_model import SessionState
+from .utils.state_adapter import StateAdapter, StateProxy
+from .utils.checkpoint_manager import CheckpointManager
 from agents.validators_updated import MetaValidatorCheckAgentV2, SeniorValidatorV2
 import config
 

@@ -9,8 +9,8 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.validation_context import ValidationContextManager
-from utils.state_model import SessionState
+from ..utils.validation_context import ValidationContextManager
+from ..utils.state_model import SessionState
 import config
 
 

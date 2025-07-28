@@ -29,7 +29,7 @@ def get_junior_validator_agent_v2():
         from ..tools.mock_tools import mock_desktop_commander_toolset
         tools = mock_desktop_commander_toolset
     else:
-        tools = desktop_commander_toolset
+        tools = [desktop_commander_toolset]
         
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
@@ -157,7 +157,7 @@ class SeniorValidatorV2(SessionStateAwareAgent):
             from ..tools.mock_tools import mock_desktop_commander_toolset
             return mock_desktop_commander_toolset
         else:
-            return desktop_commander_toolset
+            return [desktop_commander_toolset]
     
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         # Get typed session state

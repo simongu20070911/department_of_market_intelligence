@@ -1,0 +1,49 @@
+{
+  "checkpoint_id": "implementation_code_generation_2025-07-28T11-28-15-104444+00-00",
+  "task_id": "checkpoint_test_task",
+  "timestamp": "2025-07-28T11:28:15.104444+00:00",
+  "phase": "implementation",
+  "step": "code_generation",
+  "session_state": {
+    "task_id": "checkpoint_test_task",
+    "current_date": "2025-07-28",
+    "task_file_path": null,
+    "current_phase": "implementation",
+    "current_task": "generate_code",
+    "plan_artifact_name": "outputs/test_plan.md",
+    "plan_version": 0,
+    "implementation_manifest_artifact": null,
+    "results_extraction_script_artifact": null,
+    "artifact_to_validate": null,
+    "validation_info": {
+      "validation_version": 0,
+      "validation_status": "pending",
+      "junior_critique_artifact": null,
+      "senior_critique_artifact": null,
+      "parallel_validation_critical_issues": [],
+      "consolidated_validation_issues": []
+    },
+    "execution_info": {
+      "execution_status": "pending",
+      "error_type": null,
+      "error_details": null,
+      "suggested_fix": null,
+      "execution_log_artifact": null
+    },
+    "coder_subtask": null,
+    "all_coding_tasks": [],
+    "final_report_artifact": null,
+    "final_results_artifact": null,
+    "last_checkpoint_time": null,
+    "checkpoint_version": 0,
+    "metadata": {
+      "test_field": "test_value"
+    }
+  },
+  "metadata": {
+    "test_run": true,
+    "agent_type": "test"
+  },
+  "agent_execution_count": 0,
+  "uses_session_state_model": true
+}

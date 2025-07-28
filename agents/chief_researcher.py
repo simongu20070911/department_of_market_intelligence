@@ -15,8 +15,24 @@ def get_chief_researcher_agent():
         from ..tools.mock_tools import mock_desktop_commander_toolset
         tools = mock_desktop_commander_toolset
     else:
-        from ..tools.desktop_commander import desktop_commander_toolset
-        tools = desktop_commander_toolset
+        # Create MCP toolset inline as per ADK documentation
+        from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
+        from mcp.client.stdio import StdioServerParameters
+        import os
+        
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
+        tools = [
+            MCPToolset(
+                connection_params=StdioConnectionParams(
+                    server_params=StdioServerParameters(
+                        command=config.DESKTOP_COMMANDER_COMMAND,
+                        args=config.DESKTOP_COMMANDER_ARGS,
+                        cwd=project_root
+                    )
+                )
+            )
+        ]
     return LlmAgent(
         model=get_llm_model(config.CHIEF_RESEARCHER_MODEL),
         name="Chief_Researcher",

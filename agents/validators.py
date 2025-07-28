@@ -15,10 +15,13 @@ def get_junior_validator_agent():
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name="Junior_Validator")
     
-    # Use mock tools in dry run mode
-    if config.DRY_RUN_MODE:
-        from ..tools.mock_tools import mock_desktop_commander_toolset
-        tools = mock_desktop_commander_toolset
+    # Get tools from the registry (supports both mock and real MCP)
+    from ..tools.toolset_registry import toolset_registry
+    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
+    
+    # Wrap in list if it's a real MCP toolset, mock tools are already a list
+    if toolset_registry.is_using_real_mcp():
+        tools = [desktop_commander_toolset]
     else:
         tools = desktop_commander_toolset
         
@@ -54,10 +57,13 @@ def get_senior_validator_agent():
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name="Senior_Validator")
     
-    # Use mock tools in dry run mode
-    if config.DRY_RUN_MODE:
-        from ..tools.mock_tools import mock_desktop_commander_toolset
-        tools = mock_desktop_commander_toolset
+    # Get tools from the registry (supports both mock and real MCP)
+    from ..tools.toolset_registry import toolset_registry
+    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
+    
+    # Wrap in list if it's a real MCP toolset, mock tools are already a list
+    if toolset_registry.is_using_real_mcp():
+        tools = [desktop_commander_toolset]
     else:
         tools = desktop_commander_toolset
         
@@ -416,4 +422,4 @@ class ParallelFinalValidationAgent(BaseAgent):
             from ..tools.mock_tools import mock_desktop_commander_toolset
             return mock_desktop_commander_toolset
         else:
-            return desktop_commander_toolset
+            return [desktop_commander_toolset]

@@ -4,8 +4,8 @@ Test script for SessionState model and migration adapter.
 """
 
 import json
-from utils.state_model import SessionState, TaskInfo, ValidationInfo, ExecutionInfo
-from utils.state_adapter import StateAdapter, StateProxy
+from .utils.state_model import SessionState, TaskInfo, ValidationInfo, ExecutionInfo
+from .utils.state_adapter import StateAdapter, StateProxy
 
 
 def test_basic_session_state():
@@ -135,7 +135,7 @@ def test_state_proxy():
     print(f"  - session.metadata: {session.metadata}")
     
     # Test keys() method
-    keys = proxy.keys()
+    keys = list(proxy.keys())
     print(f"\n✓ Proxy has {len(keys)} accessible keys")
     
     return session, proxy

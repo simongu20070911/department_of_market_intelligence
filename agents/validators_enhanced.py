@@ -626,7 +626,7 @@ def get_junior_validator_agent():
         from ..tools.mock_tools import mock_desktop_commander_toolset
         tools = mock_desktop_commander_toolset
     else:
-        tools = desktop_commander_toolset
+        tools = [desktop_commander_toolset]
     
     # Create a wrapper agent that selects the appropriate prompt
     class ContextAwareJuniorValidator(BaseAgent):
@@ -668,7 +668,7 @@ def get_senior_validator_agent():
         from ..tools.mock_tools import mock_desktop_commander_toolset
         tools = mock_desktop_commander_toolset
     else:
-        tools = desktop_commander_toolset
+        tools = [desktop_commander_toolset]
     
     # Create a wrapper agent that selects the appropriate prompt
     class ContextAwareSeniorValidator(BaseAgent):

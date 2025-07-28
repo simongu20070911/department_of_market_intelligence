@@ -465,7 +465,7 @@ def get_junior_validator_agent():
         from ..tools.mock_tools import mock_desktop_commander_toolset
         tools = mock_desktop_commander_toolset
     else:
-        tools = desktop_commander_toolset
+        tools = [desktop_commander_toolset]
         
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
@@ -514,7 +514,7 @@ def get_senior_validator_agent():
         from ..tools.mock_tools import mock_desktop_commander_toolset
         tools = mock_desktop_commander_toolset
     else:
-        tools = desktop_commander_toolset
+        tools = [desktop_commander_toolset]
         
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
@@ -578,7 +578,7 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name=f"{validator_type}_{index}")
     
-    tools = desktop_commander_toolset if not config.DRY_RUN_MODE else None
+    tools = [desktop_commander_toolset] if not config.DRY_RUN_MODE else None
     
     validator_configs = {
         "research_plan": {
@@ -776,7 +776,9 @@ class ParallelFinalValidationAgent(BaseAgent):
         """Analyze validation results from all parallel validators."""
         # Collect issues from state or analyze output files
         # This is simplified - in reality would parse validator outputs
-        return ctx.session.state.get('parallel_validation_critical_issues', [])
+        if ctx.session.state.get('validation_status') == 'critical_error':
+            return ctx.session.state.get('consolidated_validation_issues', [])
+        return []
 
 
 # This is not an LLM agent. It's a simple control-flow agent.

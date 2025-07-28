@@ -11,9 +11,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import json
 import shutil
 from datetime import datetime
-from utils.checkpoint_manager import CheckpointManager
-from utils.state_model import SessionState
-from utils.state_adapter import StateAdapter
+from ..utils.checkpoint_manager import CheckpointManager
+from ..utils.state_model import SessionState
+from ..utils.state_adapter import StateAdapter
 import config
 
 
@@ -147,12 +147,12 @@ def test_checkpoint_listing_and_cleanup():
     checkpoints = []
     for i in range(5):
         session_state = SessionState(task_id=test_task_id)
-        session_state.current_phase = "testing"
+        session_state.current_phase = "planning"
         session_state.current_task = f"test_step_{i}"
         session_state.metadata["step_number"] = str(i)
         
         checkpoint_id = checkpoint_manager.create_checkpoint(
-            phase="testing",
+            phase="planning",
             step=f"step_{i}",
             session_state=session_state,
             metadata={"step": i}
@@ -221,7 +221,7 @@ def test_output_snapshots():
     
     # Create checkpoint (which should create snapshot)
     session_state = SessionState(task_id=test_task_id)
-    session_state.current_phase = "snapshot_test"
+    session_state.current_phase = "planning"
     session_state.current_task = "test_snapshots"
     
     checkpoint_id = checkpoint_manager.create_checkpoint(

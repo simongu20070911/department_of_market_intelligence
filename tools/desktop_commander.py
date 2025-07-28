@@ -1,15 +1,12 @@
 # /department_of_market_intelligence/tools/desktop_commander.py
-from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
-from mcp.client.stdio import StdioServerParameters
-from .. import config
+"""
+DEPRECATED: Do not use this module directly.
+MCP toolsets should be created inline within agent definitions
+to avoid initialization issues during module import.
 
-# This creates a single, reusable toolset for the Desktop Commander MCP server.
-# The ADK framework will manage the lifecycle of the server process.
-desktop_commander_toolset = MCPToolset(
-    connection_params=StdioConnectionParams(
-        server_params=StdioServerParameters(
-            command=config.DESKTOP_COMMANDER_COMMAND,
-            args=config.DESKTOP_COMMANDER_ARGS,
-        )
-    )
-)
+See ADK documentation on MCP tools for the correct pattern.
+"""
+
+# This module is kept for backward compatibility but should not be used.
+# All agents should create MCPToolset instances directly in their
+# get_*_agent() functions when not in DRY_RUN_MODE.

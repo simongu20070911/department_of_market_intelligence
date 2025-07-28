@@ -185,6 +185,10 @@ class StateProxy:
     
     def __getitem__(self, key: str) -> Any:
         """Get value using dictionary syntax."""
+        # Type safety - ensure key is a string
+        if not isinstance(key, str):
+            raise TypeError(f"Key must be a string, got {type(key)}: {key}")
+            
         # First check if it's a direct SessionState attribute
         if hasattr(self._session, key):
             return getattr(self._session, key)
@@ -251,10 +255,29 @@ class StateProxy:
         except KeyError:
             return default
     
-    def keys(self) -> list:
-        """Get all available keys."""
-        # Convert to dict and return keys
-        return list(self._adapter.session_state_to_dict(self._session).keys())
+    def __contains__(self, key: str) -> bool:
+        """Check if key exists in state."""
+        if not isinstance(key, str):
+            return False
+            
+        try:
+            self[key]
+            return True
+        except KeyError:
+            return False
+    
+    def keys(self):
+        """Return an iterator over keys."""
+        # Return both direct attributes and metadata keys
+        direct_keys = [attr for attr in dir(self._session) 
+                      if not attr.startswith('_') and not callable(getattr(self._session, attr))]
+        nested_keys = ['validation_status', 'validation_version', 'execution_status',
+                      'junior_critique_artifact', 'senior_critique_artifact',
+                      'parallel_validation_critical_issues', 'consolidated_validation_issues',
+                      'error_type', 'error_details', 'suggested_fix']
+        metadata_keys = list(self._session.metadata.keys())
+        
+        return iter(direct_keys + nested_keys + metadata_keys)
     
     def update(self, other: dict) -> None:
         """Update multiple values."""

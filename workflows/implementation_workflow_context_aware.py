@@ -24,30 +24,39 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
 
     def __init__(self, **kwargs):
         # Initialize all sub-workflows
-        self._orchestrator_workflow = get_context_aware_orchestrator_workflow()
-        self._coder_workflow = get_coder_workflow()  # Coders use standard workflow
-        self._experiment_workflow = get_experiment_workflow()  # Standard experiment workflow
-        self._orchestrator_agent = get_orchestrator_agent()
-        self._experiment_executor = get_experiment_executor_agent()
+        orchestrator_workflow = get_context_aware_orchestrator_workflow()
+        coder_workflow = get_coder_workflow()
+        experiment_workflow = get_experiment_workflow()
+        orchestrator_agent = get_orchestrator_agent()
+        experiment_executor = get_experiment_executor_agent()
         
         # Context-aware validation workflows
-        self._code_validation = get_context_aware_code_validation_workflow()
-        self._experiment_validation = get_context_aware_experiment_validation_workflow()
-        self._results_validation = get_context_aware_results_validation_workflow()
+        code_validation = get_context_aware_code_validation_workflow()
+        experiment_validation = get_context_aware_experiment_validation_workflow()
+        results_validation = get_context_aware_results_validation_workflow()
         
         super().__init__(
             sub_agents=[
-                self._orchestrator_workflow,
-                self._coder_workflow,
-                self._experiment_workflow,
-                self._orchestrator_agent,
-                self._experiment_executor,
-                self._code_validation,
-                self._experiment_validation,
-                self._results_validation
+                orchestrator_workflow,
+                coder_workflow,
+                experiment_workflow,
+                orchestrator_agent,
+                experiment_executor,
+                code_validation,
+                experiment_validation,
+                results_validation
             ],
             **kwargs
         )
+        
+        self._orchestrator_workflow = orchestrator_workflow
+        self._coder_workflow = coder_workflow
+        self._experiment_workflow = experiment_workflow
+        self._orchestrator_agent = orchestrator_agent
+        self._experiment_executor = experiment_executor
+        self._code_validation = code_validation
+        self._experiment_validation = experiment_validation
+        self._results_validation = results_validation
 
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         from ..utils.checkpoint_manager import checkpoint_manager
@@ -55,7 +64,7 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         
         # Get state proxy
         session_state = getattr(ctx.session, '_typed_state', None)
-        state_proxy = StateProxy(ctx.session, session_state)
+        state_proxy = StateProxy(session_state)
         
         print("\n🎯 CONTEXT-AWARE IMPLEMENTATION WORKFLOW")
         print("="*60)
@@ -77,11 +86,22 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         async for event in self._orchestrator_workflow.run_async(ctx):
             yield event
         
+        # Re-initialize the state proxy to get the latest state
+        state_proxy = StateProxy(getattr(ctx.session, '_typed_state', None) or ctx.session.state)
+        
         # Check if orchestrator planning was successful
-        validation_status = state_proxy.get('validation_status', 'unknown')
+        # Directly access the state dictionary, bypassing the proxy which might be stale.
+        validation_status = ctx.session.state.get('validation_status', 'unknown')
         if validation_status != 'approved':
             print(f"❌ Orchestrator planning failed validation: {validation_status}")
-            state_proxy['execution_status'] = 'critical_error'
+            ctx.session.state['execution_status'] = 'critical_error'
+            # Need to yield something to make this an async generator
+            from google.adk.events import Event
+            from google.genai.types import Content, Part
+            yield Event(
+                author=self.name,
+                content=Content(parts=[Part(text="Implementation workflow failed validation")])
+            )
             return
         
         print("✅ Implementation manifest approved with context-aware validation!")
@@ -97,6 +117,13 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         if not manifest_path:
             print("❌ No implementation manifest found!")
             state_proxy['execution_status'] = 'critical_error'
+            # Need to yield something to make this an async generator
+            from google.adk.events import Event
+            from google.genai.types import Content, Part
+            yield Event(
+                author=self.name,
+                content=Content(parts=[Part(text="No implementation manifest found")])
+            )
             return
         
         # Run coder workflow (handles its own parallelization)

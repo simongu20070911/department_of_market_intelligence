@@ -96,12 +96,16 @@ def get_context_aware_research_planning_workflow():
         name="ContextAwareParallelValidation"
     )
     
-    # Complete workflow: loop + parallel validation
+    # A final check to ensure the status is correctly propagated after parallel validation
+    final_status_check = MetaValidatorCheckAgent(name="FinalStatusCheck")
+
+    # Complete workflow: loop + parallel validation + final check
     complete_planning_workflow = SequentialAgent(
         name="CompletePlanningWorkflow",
         sub_agents=[
             planning_loop,
-            parallel_validation
+            parallel_validation,
+            final_status_check
         ]
     )
     
@@ -155,12 +159,16 @@ def get_context_aware_orchestrator_workflow():
         name="ContextAwareParallelValidation"
     )
     
+    # A final check to ensure the status is correctly propagated after parallel validation
+    final_status_check = MetaValidatorCheckAgent(name="FinalStatusCheck")
+
     # Complete workflow
     complete_orchestrator_workflow = SequentialAgent(
         name="CompleteOrchestratorWorkflow",
         sub_agents=[
             orchestrator_loop,
-            parallel_validation
+            parallel_validation,
+            final_status_check
         ]
     )
     

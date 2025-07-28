@@ -42,7 +42,7 @@ def get_validation_context(session_state):
         return 'code_implementation'
     else:
         return 'research_plan'
-from utils.state_model import SessionState
+from ..utils.state_model import SessionState
 import config
 
 

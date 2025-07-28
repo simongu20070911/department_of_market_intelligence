@@ -76,76 +76,98 @@ async def main(resume_from_checkpoint: str = None):
         resume_from_checkpoint: Optional checkpoint ID to resume from
     """
     from .utils.checkpoint_manager import checkpoint_manager
+    from .tools.desktop_commander_async import get_mcp_toolset_with_lifecycle
+    from contextlib import AsyncExitStack
     
-    # Initialize ADK services for this run
-    session_service = InMemorySessionService()
-    artifact_service = InMemoryArtifactService()
+    # Use async exit stack for proper MCP lifecycle management
+    async with AsyncExitStack() as exit_stack:
+        # Initialize MCP toolset with proper lifecycle management
+        if not config.DRY_RUN_MODE:
+            print("🔧 Setting up MCP toolset with proper lifecycle management...")
+            try:
+                mcp_toolset, mcp_exit_stack = await get_mcp_toolset_with_lifecycle()
+                if mcp_exit_stack:
+                    # Register the MCP exit stack for cleanup
+                    await exit_stack.enter_async_context(mcp_exit_stack)
+                
+                # Register the real MCP toolset in the global registry
+                from .tools.toolset_registry import toolset_registry
+                toolset_registry.set_desktop_commander_toolset(mcp_toolset, is_real_mcp=True)
+                print("✅ MCP lifecycle management setup complete")
+            except Exception as e:
+                print(f"⚠️  MCP setup failed: {e}, continuing with fallback")
+        
+        # Initialize ADK services for this run
+        session_service = InMemorySessionService()
+        artifact_service = InMemoryArtifactService()
 
-    # Check for resume capability
-    if resume_from_checkpoint or (resume_from_checkpoint is None and checkpoint_manager.get_recovery_info()["can_resume"]):
-        if resume_from_checkpoint is None:
-            resume_from_checkpoint = checkpoint_manager._get_latest_checkpoint()
-        
-        print(f"🔄 RESUMING FROM CHECKPOINT: {resume_from_checkpoint}")
-        checkpoint_data = checkpoint_manager.load_checkpoint(resume_from_checkpoint)
-        
-        if checkpoint_data:
-            print(f"📋 Resuming Task ID: {checkpoint_data['task_id']}")
-            print(f"🎯 Resume Point: {checkpoint_data['phase']} → {checkpoint_data['step']}")
+        # Check for resume capability
+        if resume_from_checkpoint or (resume_from_checkpoint is None and checkpoint_manager.get_recovery_info()["can_resume"]):
+            if resume_from_checkpoint is None:
+                resume_from_checkpoint = checkpoint_manager._get_latest_checkpoint()
             
-            # Restore session state from checkpoint
-            initial_state = checkpoint_data['session_state']
-            checkpoint_manager.agent_execution_count = checkpoint_data['agent_execution_count']
+            print(f"🔄 RESUMING FROM CHECKPOINT: {resume_from_checkpoint}")
+            checkpoint_data = checkpoint_manager.load_checkpoint(resume_from_checkpoint)
+            
+            if checkpoint_data:
+                print(f"📋 Resuming Task ID: {checkpoint_data['task_id']}")
+                print(f"🎯 Resume Point: {checkpoint_data['phase']} → {checkpoint_data['step']}")
+                
+                # Restore session state from checkpoint
+                initial_state = checkpoint_data['session_state']
+                checkpoint_manager.agent_execution_count = checkpoint_data['agent_execution_count']
+            else:
+                print("❌ Failed to load checkpoint, starting fresh")
+                initial_state = None
         else:
-            print("❌ Failed to load checkpoint, starting fresh")
+            print(f"🚀 STARTING NEW TASK: {config.TASK_ID}")
             initial_state = None
-    else:
-        print(f"🚀 STARTING NEW TASK: {config.TASK_ID}")
-        initial_state = None
 
-    # The root of our agentic system - use context-aware if enabled
-    if config.ENABLE_CONTEXT_AWARE_VALIDATION:
-        print("🔍 Using CONTEXT-AWARE validation system")
-        root_agent = RootWorkflowAgentContextAware(name="MarketAlpha_Root")
-    else:
-        print("📋 Using standard validation system")
-        root_agent = RootWorkflowAgent(name="MarketAlpha_Root")
+        # The root of our agentic system - use context-aware if enabled
+        if config.ENABLE_CONTEXT_AWARE_VALIDATION:
+            print("🔍 Using CONTEXT-AWARE validation system")
+            root_agent = RootWorkflowAgentContextAware(name="MarketAlpha_Root")
+        else:
+            print("📋 Using standard validation system")
+            root_agent = RootWorkflowAgent(name="MarketAlpha_Root")
 
-    runner = Runner(
-        agent=root_agent,
-        app_name="ULTRATHINK_QUANTITATIVE",
-        session_service=session_service,
-        artifact_service=artifact_service,
-    )
+        runner = Runner(
+            agent=root_agent,
+            app_name="ULTRATHINK_QUANTITATIVE",
+            session_service=session_service,
+            artifact_service=artifact_service,
+        )
 
-    # Prepare the initial session state
-    if initial_state is None:
-        import os as _os
-        base_dir = _os.path.dirname(_os.path.abspath(__file__))
-        task_file = _os.path.join(base_dir, TASKS_DIR, "sample_research_task.md")
-        initial_state = {"task_file_path": task_file}
-        print(f"--- Starting Research Task from {task_file} ---")
-    else:
-        print(f"--- Resuming Research Task: {initial_state.get('task_file_path', 'Unknown')} ---")
-    
-    # Create a session for this research task
-    session = await session_service.create_session(
-        app_name="ULTRATHINK_QUANTITATIVE",
-        user_id="quant_team",
-        state=initial_state
-    )
-    
-    # Start the process with an initial message (can be empty)
-    start_message = Content(parts=[Part(text="Begin the research process.")])
-    
-    async for event in runner.run_async(
-        session_id=session.id,
-        user_id=session.user_id,
-        new_message=start_message
-    ):
-        # You can process and print events here for real-time monitoring
-        if event.content and event.content.parts and event.content.parts[0].text:
-            print(f"[{event.author}]: {event.content.parts[0].text.strip()}")
+        # Prepare the initial session state
+        if initial_state is None:
+            import os as _os
+            task_file = _os.path.join(TASKS_DIR, "sample_research_task.md")
+            print(f"DEBUG: TASKS_DIR = {TASKS_DIR}")
+            print(f"DEBUG: task_file = {task_file}")
+            print(f"DEBUG: file exists = {_os.path.exists(task_file)}")
+            initial_state = {"task_file_path": task_file}
+            print(f"--- Starting Research Task from {task_file} ---")
+        else:
+            print(f"--- Resuming Research Task: {initial_state.get('task_file_path', 'Unknown')} ---")
+        
+        # Create a session for this research task
+        session = await session_service.create_session(
+            app_name="ULTRATHINK_QUANTITATIVE",
+            user_id="quant_team",
+            state=initial_state
+        )
+        
+        # Start the process with an initial message (can be empty)
+        start_message = Content(parts=[Part(text="Begin the research process.")])
+        
+        async for event in runner.run_async(
+            session_id=session.id,
+            user_id=session.user_id,
+            new_message=start_message
+        ):
+            # You can process and print events here for real-time monitoring
+            if event.content and event.content.parts and event.content.parts[0].text:
+                print(f"[{event.author}]: {event.content.parts[0].text.strip()}")
 
 if __name__ == "__main__":
     asyncio.run(main())

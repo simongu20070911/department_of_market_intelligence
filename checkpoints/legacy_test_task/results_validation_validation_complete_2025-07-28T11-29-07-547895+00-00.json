@@ -1,0 +1,22 @@
+{
+  "checkpoint_id": "results_validation_validation_complete_2025-07-28T11-29-07-547895+00-00",
+  "task_id": "legacy_test_task",
+  "timestamp": "2025-07-28T11:29:07.547895+00:00",
+  "phase": "results_validation",
+  "step": "validation_complete",
+  "session_state": {
+    "task_id": "legacy_test_task",
+    "current_task": "validate_results",
+    "plan_artifact_name": "outputs/legacy_plan.md",
+    "plan_version": 3,
+    "validation_status": "approved",
+    "validation_version": 2,
+    "execution_status": "success",
+    "artifact_to_validate": "outputs/results.json"
+  },
+  "metadata": {
+    "legacy_test": true
+  },
+  "agent_execution_count": 0,
+  "uses_session_state_model": false
+}
