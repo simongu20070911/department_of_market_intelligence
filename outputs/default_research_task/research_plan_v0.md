@@ -1,109 +1,110 @@
-# Research Plan: Market Anomaly Detection in High-Volatility Periods
+# Research Plan V0: Market Anomaly Detection in S&P 500 Stocks
 
-**Version:** 0.1
+**Researcher:** Chief Researcher, ULTRATHINK_QUANTITATIVE Market Alpha
 **Date:** 2025-07-28
-**Author:** ULTRATHINK_QUANTITATIVE Market Alpha Department
 
-## 1. Hypothesis
+## 1. Hypothesis Formulation
 
-**Primary Hypothesis:** Specific S&P 500 sectors, particularly defensive sectors (e.g., Utilities, Consumer Staples) and cyclical sectors (e.g., Technology, Consumer Discretionary), exhibit statistically significant, divergent return patterns during periods of high market volatility (VIX > 30) compared to periods of low volatility. We expect defensive sectors to outperform, and cyclical sectors to underperform, on a risk-adjusted basis.
+**Primary Hypothesis:**
+*   H1: During periods of high market volatility (defined as VIX > 30), specific S&P 500 sectors, particularly defensive sectors (e.g., Utilities, Consumer Staples) and technology sectors, exhibit statistically significant abnormal returns compared to their baseline performance in low-volatility periods.
 
-**Secondary Hypothesis:** A short-term momentum reversal effect is observable in individual S&P 500 stocks in the 1-5 trading days following a volatility spike (VIX > 30). Specifically, stocks with high positive momentum in the preceding period will show negative returns, and vice-versa.
+**Secondary Hypotheses:**
+*   H2: A short-term momentum reversal effect is observable in individual S&P 500 stocks in the 1-5 trading days following a volatility spike (VIX crossing above 30).
+*   H3: Changes in inter-sector correlation and trading volume can act as leading indicators for sector rotation in the days immediately preceding and following a high-volatility event.
 
 ## 2. Data Sourcing and Hygiene Protocol
 
 **Data Sources:**
-*   **Stock Data:** yfinance library for daily OHLCV (Open, High, Low, Close, Volume) data for all S&P 500 constituents.
-*   **VIX Data:** yfinance library for daily VIX close data.
-*   **Sector Data:** A reliable source (e.g., a public financial data API or a static file from a reputable provider) for GICS sector classifications for each S&P 500 constituent.
-*   **Market Capitalization:** yfinance library for daily market cap data.
+*   **Stock Data:** Daily OHLCV (Open, High, Low, Close, Volume) prices for all S&P 500 constituents from 2019-01-01 to 2025-07-28. Sourcing from a reputable financial data provider API (e.g., Alpha Vantage, Polygon.io, or a local data store).
+*   **VIX Data:** Daily closing values for the CBOE Volatility Index (VIX) for the same period.
+*   **Sector Mappings:** Historical S&P 500 sector classifications (GICS) for all constituents. This is crucial to handle reclassifications and delistings.
+*   **Market Cap Data:** Daily market capitalization for each S&P 500 constituent to allow for value-weighted analysis.
+*   **Risk-Free Rate:** Daily US Treasury yields (e.g., 3-month T-bill rate) to calculate excess returns and Sharpe ratios.
 
 **Data Hygiene Protocol:**
-1.  **Data Collection:**
-    *   Download daily data for all current S&P 500 constituents from 2019-01-01 to 2024-12-31. This includes a buffer year for momentum calculations.
-    *   Download daily VIX data for the same period.
-    *   Obtain a list of historical S&P 500 constituents to mitigate survivorship bias.
+1.  **Survivorship Bias Mitigation:** Utilize a historical constituents list for the S&P 500 to ensure the analysis includes stocks that were delisted or removed from the index during the period.
 2.  **Data Cleaning:**
-    *   Check for and handle missing data (e.g., using forward-fill or back-fill, with a maximum of 3 consecutive missing days).
-    *   Adjust for stock splits and dividends using adjusted close prices.
-    *   Merge datasets on the date field.
-3.  **Feature Engineering:**
-    *   Calculate daily returns for each stock.
-    *   Calculate daily log returns.
-    *   Create a binary 'High Volatility' indicator (1 if VIX > 30, 0 otherwise).
+    *   Check for and handle missing data points (NaNs) in all time series. Imputation method: forward-fill for prices, interpolation for VIX if necessary, but removal of the day's data is preferred if critical values are missing.
+    *   Adjust for stock splits and dividends to ensure accurate return calculations.
+    *   Filter out any erroneous data points (e.g., price changes of >50% in a single day without a corporate action).
+3.  **Data Structuring:**
+    *   Merge all datasets into a single, time-indexed pandas DataFrame.
+    *   Clearly define high-volatility periods (VIX > 30) and low-volatility periods (VIX <= 30) using a binary flag.
+    *   Calculate daily returns: `(Close_t - Close_{t-1}) / Close_{t-1}`.
+    *   Calculate daily log returns for specific statistical tests: `ln(Close_t / Close_{t-1})`.
 
-## 3. Experiments and Statistical Tests
+## 3. Experiments and Statistical Analysis
 
-**Experiment 1: Sector Performance Analysis**
-*   **Objective:** Test the primary hypothesis.
+**Experiment 1: Sector Performance during High Volatility (H1)**
+*   **Objective:** Quantify sector-specific abnormal returns.
 *   **Methodology:**
-    1.  Group stocks by sector.
-    2.  Calculate daily, weekly, and monthly returns for each sector, both equally-weighted and market-cap weighted.
-    3.  Separate the data into 'High Volatility' and 'Low Volatility' periods.
-    4.  Perform a two-sample t-test to compare the mean returns of each sector in high vs. low volatility periods.
-    5.  Calculate Sharpe ratios for each sector in both periods.
-*   **Statistical Tests:** Two-sample t-test, Sharpe ratio calculation.
+    1.  For each sector, create two return series: `Returns_HighVIX` and `Returns_LowVIX`.
+    2.  Perform an independent two-sample t-test to determine if the mean daily return for each sector during high-VIX periods is statistically different from the mean return during low-VIX periods.
+    3.  Calculate the Sharpe Ratio for each sector in both high-VIX and low-VIX environments.
+*   **Statistical Tests:**
+    *   **Shapiro-Wilk Test:** To check if the return distributions are normal. If not, use a non-parametric alternative.
+    *   **Levene's Test:** To check for equal variances.
+    *   **Independent Two-Sample T-test (or Welch's T-test if variances are unequal, Mann-Whitney U test if non-normal):** To compare mean returns.
+    *   **Confidence Intervals:** Calculate 95% confidence intervals for the mean returns in each regime.
 
-**Experiment 2: Momentum Reversal Analysis**
-*   **Objective:** Test the secondary hypothesis.
+**Experiment 2: Momentum Reversal Analysis (H2)**
+*   **Objective:** Test for evidence of momentum reversal post-volatility spike.
 *   **Methodology:**
-    1.  For each stock, calculate a 30-day rolling momentum score.
-    2.  Identify all days where the 'High Volatility' indicator is triggered.
-    3.  For each trigger day, analyze the returns of the top and bottom quintiles of stocks (based on momentum) over the next 1, 3, and 5 trading days.
-    4.  Perform a paired t-test to compare the returns of the high-momentum and low-momentum portfolios in the post-spike period.
-*   **Statistical Tests:** Paired t-test.
+    1.  Identify all "volatility spike events" where the VIX crosses from <=30 to >30.
+    2.  For each event, identify the top 10% (quintile 1) and bottom 10% (quintile 5) of performers in the S&P 500 over the preceding 5 days.
+    3.  Track the cumulative returns of these two portfolios over the subsequent `T+1`, `T+3`, and `T+5` trading days.
+    4.  Aggregate the results across all events and run a paired t-test to see if the "loser" portfolio significantly outperforms the "winner" portfolio.
+*   **Statistical Tests:**
+    *   **Paired T-test:** To compare the post-spike returns of the winner and loser portfolios.
 
-**Experiment 3: Sector Correlation Analysis**
-*   **Objective:** Analyze changes in inter-sector relationships.
+**Experiment 3: Leading Indicators for Sector Rotation (H3)**
+*   **Objective:** Identify predictors for sector performance shifts around volatility events.
 *   **Methodology:**
-    1.  Calculate the daily returns for each sector.
-    2.  Create two correlation matrices of sector returns: one for 'High Volatility' periods and one for 'Low Volatility' periods.
-    3.  Analyze the differences in the correlation matrices.
-*   **Statistical Tests:** Pearson correlation coefficient.
-
-**Experiment 4: Predictive Modeling for Sector Rotation**
-*   **Objective:** Identify leading indicators for sector rotation.
-*   **Methodology:**
-    1.  Develop a logistic regression model to predict which sector will be the top performer in the next month.
-    2.  Potential features for the model:
-        *   VIX level and recent changes.
-        *   Moving averages of sector returns.
-        *   Relative strength of sectors.
-        *   Macroeconomic indicators (e.g., interest rates, inflation).
-    3.  Use proper cross-validation techniques (e.g., time-series cross-validation) to evaluate the model's performance.
-*   **Statistical Tests:** Logistic regression, AUC-ROC score.
-
-**Experiment 5: Backtesting**
-*   **Objective:** Evaluate the profitability of a strategy based on the findings.
-*   **Methodology:**
-    1.  Develop a simple trading strategy (e.g., long defensive sectors, short cyclical sectors during high volatility).
-    2.  Backtest the strategy from 2020-2024.
-    3.  Calculate performance metrics: Sharpe ratio, maximum drawdown, cumulative returns.
-*   **Statistical Tests:** Sharpe ratio, Sortino ratio.
+    1.  **Correlation Analysis:**
+        *   Calculate rolling 30-day correlation matrices for all sector returns.
+        *   Compare the average correlation matrix during high-VIX periods to the one during low-VIX periods.
+        *   Use a t-test to identify statistically significant changes in inter-sector correlations.
+    2.  **Predictive Modeling (Vector Autoregression - VAR):**
+        *   Create a time series model using variables such as:
+            *   Daily returns for each sector.
+            *   Daily trading volume for each sector.
+            *   The daily VIX value.
+        *   Test for stationarity using the Augmented Dickey-Fuller (ADF) test. Difference data as needed.
+        *   Fit a VAR model to the stationary data.
+        *   Use Granger Causality tests to determine if changes in volume or VIX "Granger-cause" changes in sector returns.
+*   **Statistical Tests:**
+    *   **Augmented Dickey-Fuller (ADF) Test:** For time-series stationarity.
+    *   **Granger Causality Test:** To assess predictive power.
 
 ## 4. Required Outputs, Charts, and Metrics
 
-1.  **Data Summary:**
-    *   Table of descriptive statistics for all data sources.
-2.  **Sector Performance:**
-    *   Table of t-test results for sector returns in high vs. low volatility periods.
-    *   Bar chart comparing Sharpe ratios of sectors in both periods.
-3.  **Momentum Reversal:**
-    *   Table of t-test results for momentum reversal portfolios.
-    *   Line chart showing cumulative returns of high-momentum and low-momentum portfolios after a volatility spike.
-4.  **Correlation Analysis:**
-    *   Heatmaps of the sector correlation matrices for both periods.
-5.  **Predictive Model:**
-    *   Table of logistic regression coefficients and their significance.
-    *   ROC curve for the model.
-6.  **Backtesting:**
-    *   Equity curve of the backtested strategy.
-    *   Table of performance metrics (Sharpe ratio, max drawdown, etc.).
-7.  **Final Report:**
-    *   A comprehensive report summarizing the findings, with clear visualizations and interpretations of the results.
+**1. Statistical Summary Table:**
+*   A table showing, for each sector:
+    *   Mean Daily Return (High VIX vs. Low VIX)
+    *   P-value from the t-test/Mann-Whitney U test
+    *   95% Confidence Interval for mean returns
+    *   Sharpe Ratio (High VIX vs. Low VIX)
 
-## 5. Secondary Relationships
+**2. Correlation Matrix Heatmaps:**
+*   A heatmap visualizing the sector-sector correlation matrix for low-volatility periods.
+*   A second heatmap for high-volatility periods.
+*   A third heatmap showing the *difference* between the two matrices to highlight changes.
 
-*   **VIX Term Structure:** Investigate if the shape of the VIX futures curve (contango vs. backwardation) has any predictive power for sector performance.
-*   **Small-Cap vs. Large-Cap:** Compare the performance of small-cap and large-cap stocks during high-volatility periods.
-*   **Interest Rate Sensitivity:** Analyze how different sectors' sensitivity to interest rate changes is affected by high volatility.
+**3. Momentum Reversal Chart:**
+*   A line chart showing the aggregated cumulative returns of the "winner" and "loser" portfolios in the 5 days following volatility spikes. Error bands (standard error) should be included.
+
+**4. Predictive Model Output:**
+*   A summary of the VAR model coefficients.
+*   A table of the Granger Causality test results, showing p-values for the predictive relationships between VIX, volume, and sector returns.
+
+**5. Backtesting Report (Synthetic Strategy):**
+*   Based on the findings, construct a simple, rules-based strategy (e.g., "rotate into Sector X when VIX > 30").
+*   Backtest this strategy from 2020-2024.
+*   Report key performance indicators:
+    *   Cumulative Return
+    *   Annualized Sharpe Ratio
+    *   Maximum Drawdown (MDD)
+    *   Calmar Ratio (Annualized Return / MDD)
+
+**6. Final Written Report:**
+*   A comprehensive document summarizing the methodology, findings, and conclusions, referencing all the outputs listed above. The report will explicitly state whether each hypothesis was supported or refuted by the evidence.

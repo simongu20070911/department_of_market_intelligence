@@ -146,8 +146,18 @@ async def main(resume_from_checkpoint: str = None):
         new_message=start_message
     ):
         # You can process and print events here for real-time monitoring
-        if event.content and event.content.parts and event.content.parts[0].text:
-            print(f"[{event.author}]: {event.content.parts[0].text.strip()}")
+        if event.content and event.content.parts:
+            for part in event.content.parts:
+                if part.text:
+                    if event.partial:
+                        # Print partial text on the same line
+                        sys.stdout.write(part.text)
+                        sys.stdout.flush()
+                    else:
+                        # Once the full text is received, print a newline
+                        print(f"\n[{event.author}]: {part.text.strip()}")
+                if part.function_call:
+                    print(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
 
 if __name__ == "__main__":
     asyncio.run(main())

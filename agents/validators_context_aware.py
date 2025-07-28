@@ -511,10 +511,10 @@ def get_junior_validator_agent():
         You MUST end every response with "<end of output>".
         """
 
-    def instruction_provider(ctx: InvocationContext) -> str:
-        context_type = ctx.session.state.get("validation_context", "research_plan")
+    def instruction_provider(ctx: "ReadonlyContext") -> str:
+        context_type = ctx.state.get("validation_context", "research_plan")
         context_prompt = get_validation_context_prompt(context_type, "junior")
-        return base_instruction.format(context_specific_prompt=context_prompt, **ctx.session.state)
+        return base_instruction.replace("{context_specific_prompt}", context_prompt)
 
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
@@ -603,10 +603,10 @@ def get_senior_validator_agent():
         You MUST end every response with "<end of output>".
         """
 
-    def instruction_provider(ctx: InvocationContext) -> str:
-        context_type = ctx.session.state.get("validation_context", "research_plan")
+    def instruction_provider(ctx: "ReadonlyContext") -> str:
+        context_type = ctx.state.get("validation_context", "research_plan")
         context_prompt = get_validation_context_prompt(context_type, "senior")
-        return base_instruction.format(context_specific_prompt=context_prompt, **ctx.session.state)
+        return base_instruction.replace("{context_specific_prompt}", context_prompt)
 
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
