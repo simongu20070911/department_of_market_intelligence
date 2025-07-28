@@ -7,8 +7,8 @@ from google.adk.agents import LlmAgent, BaseAgent, ParallelAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 from .. import config
-from ..utils.callbacks import ensure_end_of_output
 from ..utils.model_loader import get_llm_model
+from google.adk.agents.llm_agent import InstructionProvider
 
 
 # Validation context types
@@ -483,10 +483,7 @@ def get_junior_validator_agent():
             )
         ]
         
-    return LlmAgent(
-        model=get_llm_model(config.VALIDATOR_MODEL),
-        name="Junior_Validator",
-        instruction="""
+    base_instruction = """
         ### Persona ###
         You are a Junior Validator for ULTRATHINK_QUANTITATIVEMarketAlpha. Your sole focus is on identifying critical, show-stopping errors and potential edge cases. You are concise and direct.
         Today's date is: {current_date?}
@@ -512,9 +509,18 @@ def get_junior_validator_agent():
 
         ### Output Format ###
         You MUST end every response with "<end of output>".
-        """,
-        tools=tools,
-        after_model_callback=ensure_end_of_output
+        """
+
+    def instruction_provider(ctx: InvocationContext) -> str:
+        context_type = ctx.session.state.get("validation_context", "research_plan")
+        context_prompt = get_validation_context_prompt(context_type, "junior")
+        return base_instruction.format(context_specific_prompt=context_prompt, **ctx.session.state)
+
+    return LlmAgent(
+        model=get_llm_model(config.VALIDATOR_MODEL),
+        name="Junior_Validator",
+        instruction=instruction_provider,
+        tools=tools
     )
 
 
@@ -549,10 +555,7 @@ def get_senior_validator_agent():
             )
         ]
         
-    return LlmAgent(
-        model=get_llm_model(config.VALIDATOR_MODEL),
-        name="Senior_Validator",
-        instruction="""
+    base_instruction = """
         ### Persona ###
         You are a Senior Validator for ULTRATHINK_QUANTITATIVEMarketAlpha. You provide detailed, constructive, and comprehensive analysis. Your judgment determines if work is ready to proceed.
         Today's date is: {current_date?}
@@ -582,7 +585,7 @@ def get_senior_validator_agent():
         2. Write detailed critique to `outputs/senior_critique_v{validation_version}.md`
         3. Include sections:
            - "Junior Validator Findings Addressed"
-           - "Additional Critical Analysis" 
+           - "Additional Critical Analysis"
            - "Recommendations for Improvement"
            - "Key Files Reviewed" (list all files examined)
            
@@ -598,9 +601,18 @@ def get_senior_validator_agent():
 
         ### Output Format ###
         You MUST end every response with "<end of output>".
-        """,
-        tools=tools,
-        after_model_callback=ensure_end_of_output
+        """
+
+    def instruction_provider(ctx: InvocationContext) -> str:
+        context_type = ctx.session.state.get("validation_context", "research_plan")
+        context_prompt = get_validation_context_prompt(context_type, "senior")
+        return base_instruction.format(context_specific_prompt=context_prompt, **ctx.session.state)
+
+    return LlmAgent(
+        model=get_llm_model(config.VALIDATOR_MODEL),
+        name="Senior_Validator",
+        instruction=instruction_provider,
+        tools=tools
     )
 
 

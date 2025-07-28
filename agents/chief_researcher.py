@@ -1,7 +1,6 @@
 # /department_of_market_intelligence/agents/chief_researcher.py
 from google.adk.agents import LlmAgent
 from .. import config
-from ..utils.callbacks import ensure_end_of_output
 from ..utils.model_loader import get_llm_model
 
 def get_chief_researcher_agent():
@@ -35,14 +34,15 @@ def get_chief_researcher_agent():
                             command=config.DESKTOP_COMMANDER_COMMAND,
                             args=config.DESKTOP_COMMANDER_ARGS,
                             cwd=project_root
-                        )
+                        ),
+                        timeout=config.MCP_TIMEOUT_SECONDS  # Use config timeout instead of default 5.0
                     )
                 )
             
-            # Use ThreadPoolExecutor with aggressive timeout
+            # Use ThreadPoolExecutor with extended timeout
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(create_mcp_toolset)
-                toolset = future.result(timeout=15)  # 15 second timeout
+                toolset = future.result(timeout=config.MCP_TIMEOUT_SECONDS + 10)  # MCP timeout + buffer
                 tools = [toolset]
                 print("✅ MCP Desktop Commander toolset created successfully!")
             
@@ -100,6 +100,5 @@ def get_chief_researcher_agent():
         ### Output Format ###
         You MUST end every response with "<end of output>".
         """,
-        tools=tools,
-        after_model_callback=ensure_end_of_output
+        tools=tools
     )
