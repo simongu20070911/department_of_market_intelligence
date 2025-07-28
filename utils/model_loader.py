@@ -10,9 +10,10 @@ def get_llm_model(model_name: str):
     
     The endpoint supports OpenAI format with streaming and thinking tokens.
     """
-    print(f"INFO: Using custom endpoint: {config.CUSTOM_GEMINI_API_ENDPOINT}")
-    print(f"INFO: Using model: {model_name}")
-    print(f"INFO: Streaming and thinking tokens enabled")
+    if config.VERBOSE_LOGGING:
+        print(f"INFO: Using custom endpoint: {config.CUSTOM_GEMINI_API_ENDPOINT}")
+        print(f"INFO: Using model: {model_name}")
+        print(f"INFO: Streaming and thinking tokens enabled")
     
     # Set the OpenAI base URL environment variable for LiteLLM
     os.environ["OPENAI_API_BASE"] = f"{config.CUSTOM_GEMINI_API_ENDPOINT}/v1"
@@ -26,4 +27,11 @@ def get_llm_model(model_name: str):
         stream=True,
         # Set the base URL explicitly
         api_base=f"{config.CUSTOM_GEMINI_API_ENDPOINT}/v1",
+        headers={"Authorization": f"Bearer {config.CUSTOM_API_KEY}"},
+        # Retry configuration for handling server errors
+        num_retries=3,
+        retry_after=2,  # Wait 2 seconds between retries
+        # Timeout configuration
+        timeout=120,  # 2 minute timeout
+        max_tokens=8192,  # Increase max tokens for longer responses
     )

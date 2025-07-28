@@ -1,0 +1,31 @@
+# Test artifacts and temporary files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Test output directories
+test_outputs/
+temp_test_data/
+*_test_task/
+
+# Coverage reports
+.coverage
+htmlcov/
+coverage.xml
+
+# Test logs
+test_*.log
+*.test.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

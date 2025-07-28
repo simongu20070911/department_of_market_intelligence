@@ -1,0 +1,40 @@
+{
+  "checkpoint_id": "final_reporting_phase_start_2025-07-28T07-26-43-372567+00-00",
+  "task_id": "default_research_task",
+  "timestamp": "2025-07-28T07:26:43.372567+00:00",
+  "phase": "final_reporting",
+  "step": "phase_start",
+  "session_state": {
+    "task_id": "research_session",
+    "current_date": "2025-07-28",
+    "current_task": "generate_results_extraction_plan",
+    "plan_artifact_name": "outputs/research_plan_v0.md",
+    "plan_version": 0,
+    "implementation_manifest_artifact": "outputs/implementation_manifest.json",
+    "results_extraction_script_artifact": "outputs/results_extraction.py",
+    "artifact_to_validate": "outputs/implementation_manifest.json",
+    "validation_version": 0,
+    "validation_status": "approved",
+    "junior_critique_artifact": "outputs/junior_critique_v0.md",
+    "senior_critique_artifact": "outputs/senior_critique_v0.md",
+    "parallel_validation_critical_issues": [],
+    "consolidated_validation_issues": [],
+    "execution_status": "success",
+    "coder_subtask": "task_id='factor_analysis' description='Factor exposure analysis' dependencies=['backtest_linear', 'backtest_tree', 'backtest_neural', 'backtest_ensemble'] status='pending' output_artifact=None error_message=None",
+    "outputs_dir": "/home/gaen/agents_gaen/department_of_market_intelligence/outputs/default_research_task",
+    "all_coding_tasks": [],
+    "current_phase": "planning",
+    "validation_info": "validation_version=0 validation_status='approved' junior_critique_artifact='outputs/junior_critique_v0.md' senior_critique_artifact='outputs/senior_critique_v0.md' parallel_validation_critical_issues=[] consolidated_validation_issues=[]",
+    "checkpoint_version": 0,
+    "current_month": "7",
+    "current_year": "2025",
+    "current_datetime": "2025-07-28 07:26:38",
+    "task_file_path": "tasks/sample_research_task.md",
+    "execution_info": "execution_status='success' error_type=None error_details=None suggested_fix=None execution_log_artifact=None"
+  },
+  "metadata": {
+    "phase_description": "Starting final report generation"
+  },
+  "agent_execution_count": 0,
+  "uses_session_state_model": false
+}

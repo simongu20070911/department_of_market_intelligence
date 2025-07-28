@@ -1,11 +1,23 @@
 # /department_of_market_intelligence/agents/executor.py
 from google.adk.agents import LlmAgent
-from ..tools.desktop_commander import desktop_commander_toolset
 from .. import config
 from ..utils.callbacks import ensure_end_of_output
 from ..utils.model_loader import get_llm_model
 
 def get_experiment_executor_agent():
+    # Use mock agent in dry run mode
+    if config.DRY_RUN_MODE and config.DRY_RUN_SKIP_LLM:
+        from ..tools.mock_llm_agent import create_mock_llm_agent
+        return create_mock_llm_agent(name="Experiment_Executor")
+    
+    # Use mock tools in dry run mode
+    if config.DRY_RUN_MODE:
+        from ..tools.mock_tools import mock_desktop_commander_toolset
+        tools = mock_desktop_commander_toolset
+    else:
+        from ..tools.desktop_commander import desktop_commander_toolset
+        tools = desktop_commander_toolset
+        
     return LlmAgent(
         model=get_llm_model(config.EXECUTOR_MODEL),
         name="Experiment_Executor",
@@ -33,6 +45,6 @@ def get_experiment_executor_agent():
         ### Output Format ###
         You MUST end every response with "<end of output>".
         """,
-        tools=[desktop_commander_toolset],
+        tools=tools,
         after_model_callback=ensure_end_of_output
     )

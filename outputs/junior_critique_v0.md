@@ -1,0 +1,1 @@
+The specified analysis period extends to December 31, 2024, which is in the future and makes the proposed data collection impossible as stated.
