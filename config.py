@@ -46,14 +46,22 @@ MCP_TIMEOUT_SECONDS = 180  # 3 minutes timeout for MCP operations
 END_OF_OUTPUT_MARKER = "<end of output>"
 
 # --- Task Management ---
-TASK_ID = os.getenv("TASK_ID", "default_research_task")  # Unique identifier for the current research task
+# The task identifier to research. Corresponds to a file in the /tasks directory.
+TASK_ID = os.getenv("TASK_ID", "sample_research_task")  # Without .md extension
 ENABLE_CHECKPOINTING = os.getenv("ENABLE_CHECKPOINTING", "true").lower() == "true"
 CHECKPOINT_INTERVAL = int(os.getenv("CHECKPOINT_INTERVAL", "1"))  # Save checkpoint after every N agents
 
 # --- File Paths ---
 # Use absolute paths to ensure files are created in the correct location
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# --- Directory Paths ---
+# Path to the directory where task markdown files are stored.
 TASKS_DIR = os.path.join(_BASE_DIR, "tasks")
+
+# Path to the root directory for all generated outputs.
+# Outputs for each task will be stored in a subdirectory here.
+OUTPUTS_BASE_DIR = os.path.join(_BASE_DIR, "outputs")
 
 # Task-specific directories
 def get_outputs_dir(task_id: str = None) -> str:
@@ -72,6 +80,8 @@ CHECKPOINTS_DIR = get_checkpoints_dir()
 VERBOSE_LOGGING = False  # Set to True for detailed debug output, False for cleaner output
 
 # --- Execution Modes ---
-DRY_RUN_MODE = False  # Set to True to validate workflows without executing expensive operations
-MAX_DRY_RUN_ITERATIONS = 2  # Limit iterations in dry run mode to catch bugs early
-DRY_RUN_SKIP_LLM = False  # Skip LLM calls entirely in dry run mode
+STREAMING_ENABLED = True # Set to True to stream the thinking process of the agents
+DRY_RUN_MODE = False  # Set to True to validate workflows without executing expensive operations  
+MAX_DRY_RUN_ITERATIONS = 3  # Limit iterations in dry run mode to catch bugs early
+DRY_RUN_SKIP_LLM = True  # Skip LLM calls entirely in dry run mode
+DRY_RUN_COMPREHENSIVE_PATH_TESTING = True  # Enable comprehensive path consistency testing

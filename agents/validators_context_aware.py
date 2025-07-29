@@ -504,8 +504,13 @@ def get_junior_validator_agent():
         - If you find critical issues, list them clearly and concisely
         - For each issue, explain WHY it's critical and its potential impact
         - If no critical issues found, write: "No critical issues found."
-        - Use `write_file` to save your critique to `outputs/junior_critique_v{validation_version}.md`
+        - Use `write_file` to save your critique to `{outputs_dir}/junior_critique_v{validation_version}.md`
         - Include a section "Key Files Reviewed:" listing important files you examined
+        
+        ### CRITICAL RESTRICTION ###
+        - You are a VALIDATOR only - you MUST NOT edit, modify, or rewrite the research plan
+        - Your job is to CRITIQUE, not to fix or improve the original artifact
+        - ONLY create critique files, NEVER modify the research plan itself
 
         ### Output Format ###
         You MUST end every response with "<end of output>".
@@ -514,7 +519,15 @@ def get_junior_validator_agent():
     def instruction_provider(ctx: "ReadonlyContext") -> str:
         context_type = ctx.state.get("validation_context", "research_plan")
         context_prompt = get_validation_context_prompt(context_type, "junior")
-        return base_instruction.replace("{context_specific_prompt}", context_prompt)
+        
+        # Get the task-specific output directory
+        # Use the actual task_id from the session (consistent with root workflow default)
+        task_id = ctx.state.get("task_id", "research_session")
+        outputs_dir = config.get_outputs_dir(task_id)
+        
+        instruction = base_instruction.replace("{context_specific_prompt}", context_prompt)
+        instruction = instruction.replace("{outputs_dir}", outputs_dir)
+        return instruction
 
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
@@ -582,7 +595,7 @@ def get_senior_validator_agent():
 
         ### Synthesis & Judgment ###
         1. Synthesize junior validator findings with your comprehensive analysis
-        2. Write detailed critique to `outputs/senior_critique_v{validation_version}.md`
+        2. Write detailed critique to `{outputs_dir}/senior_critique_v{validation_version}.md`
         3. Include sections:
            - "Junior Validator Findings Addressed"
            - "Additional Critical Analysis"
@@ -599,6 +612,12 @@ def get_senior_validator_agent():
         - For 'rejected': Issues that must be fixed but approach is sound
         - For 'critical_error': Fundamental flaws in approach or execution
 
+        ### CRITICAL RESTRICTION ###
+        - You are a VALIDATOR only - you MUST NOT edit, modify, or rewrite the research plan
+        - Your job is to CRITIQUE and APPROVE/REJECT, not to fix or improve the original artifact
+        - ONLY create critique files, NEVER modify the research plan itself
+        - If you identify issues, document them in your critique - do NOT fix them yourself
+
         ### Output Format ###
         You MUST end every response with "<end of output>".
         """
@@ -606,7 +625,15 @@ def get_senior_validator_agent():
     def instruction_provider(ctx: "ReadonlyContext") -> str:
         context_type = ctx.state.get("validation_context", "research_plan")
         context_prompt = get_validation_context_prompt(context_type, "senior")
-        return base_instruction.replace("{context_specific_prompt}", context_prompt)
+        
+        # Get the task-specific output directory
+        # Use the actual task_id from the session (consistent with root workflow default)
+        task_id = ctx.state.get("task_id", "research_session")
+        outputs_dir = config.get_outputs_dir(task_id)
+        
+        instruction = base_instruction.replace("{context_specific_prompt}", context_prompt)
+        instruction = instruction.replace("{outputs_dir}", outputs_dir)
+        return instruction
 
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
@@ -623,7 +650,23 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name=f"{validator_type}_{index}")
     
-    tools = [desktop_commander_toolset] if not config.DRY_RUN_MODE else None
+    # Import and create tools only when needed
+    if not config.DRY_RUN_MODE:
+        from google.adk.tools.mcp_toolset import MCPToolset
+        from google.adk.mcp.stdio import StdioConnectionParams, StdioServerParameters
+        
+        desktop_commander_toolset = MCPToolset(
+            connection_params=StdioConnectionParams(
+                server_params=StdioServerParameters(
+                    command=config.DESKTOP_COMMANDER_COMMAND,
+                    args=config.DESKTOP_COMMANDER_ARGS,
+                ),
+                timeout=config.MCP_TIMEOUT_SECONDS
+            )
+        )
+        tools = [desktop_commander_toolset]
+    else:
+        tools = None
     
     validator_configs = {
         "research_plan": {
@@ -723,10 +766,7 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
     validator_config = validator_configs.get(config_key, validator_configs["research_plan"])
     validator_info = list(validator_config.values())[index % len(validator_config)]
     
-    return LlmAgent(
-        model=get_llm_model(config.VALIDATOR_MODEL),
-        name=f"{validator_info['name']}_{index}",
-        instruction=f"""
+    instruction_template = f"""
         ### Persona ###
         You are a {validator_info['name']} for ULTRATHINK_QUANTITATIVEMarketAlpha parallel validation.
         Today's date is: {{current_date?}}
@@ -743,14 +783,24 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
         1. Read the artifact using `read_file`
         2. Apply your specialized lens to identify issues
         3. ONLY report CRITICAL issues in your focus area
-        4. Write findings to `outputs/parallel_validation_{validator_type.lower()}_v{{validation_version}}.md`
+        4. Write findings to `{{outputs_dir}}/parallel_validation_{validator_type.lower()}_v{{validation_version}}.md`
         5. If no critical issues in your domain: "No critical {validator_type.lower()} issues found."
 
         ### Output Format ###
         End with "<end of output>".
-        """,
-        tools=tools,
-        after_model_callback=ensure_end_of_output
+        """
+
+    def instruction_provider(ctx: "ReadonlyContext") -> str:
+        # Use the actual task_id from the session (consistent with root workflow default)
+        task_id = ctx.state.get("task_id", "research_session")
+        outputs_dir = config.get_outputs_dir(task_id)
+        return instruction_template.replace("{outputs_dir}", outputs_dir)
+
+    return LlmAgent(
+        model=get_llm_model(config.VALIDATOR_MODEL),
+        name=f"{validator_info['name']}_{index}",
+        instruction=instruction_provider,
+        tools=tools
     )
 
 
@@ -843,6 +893,8 @@ class MetaValidatorCheckAgent(BaseAgent):
         else:  # rejected
             print(f"META VALIDATOR: Status '{status}' - continuing refinement loop")
             should_escalate = False
+            # Reset the validation status so that the loop can continue
+            ctx.session.state["validation_status"] = None
         
         # 'escalate=True' is the signal for a LoopAgent to terminate.
         yield Event(

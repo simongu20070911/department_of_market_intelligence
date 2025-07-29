@@ -1,0 +1,60 @@
+{
+  "task_id": "sample_research_task",
+  "execution_summary": {
+    "status": "completed",
+    "start_time": "2025-07-29 02:40:37",
+    "experiments_completed": 4,
+    "total_runtime": "13 hours",
+    "data_points_analyzed": 52000
+  },
+  "experiment_results": {
+    "bid_ask_spread_analysis": {
+      "status": "success",
+      "key_finding": "15% decrease in average spreads",
+      "statistical_significance": "p < 0.001",
+      "sample_size": 15000,
+      "confidence_interval": "95%"
+    },
+    "market_depth_regression": {
+      "status": "success",
+      "key_finding": "40% improvement in order book depth",
+      "r_squared": 0.76,
+      "significant_factors": [
+        "retail_volume",
+        "volatility",
+        "time_trend"
+      ]
+    },
+    "trading_volume_comparison": {
+      "status": "success",
+      "retail_increase": "300%",
+      "institutional_change": "15%",
+      "market_share_shift": "10% to 25%"
+    },
+    "regulatory_impact_assessment": {
+      "status": "success",
+      "events_analyzed": 12,
+      "significant_impacts": 8,
+      "average_effect_size": "medium"
+    }
+  },
+  "quality_metrics": {
+    "data_completeness": "98.5%",
+    "outliers_detected": 247,
+    "missing_data_imputed": "1.2%",
+    "robustness_checks_passed": "all"
+  },
+  "outputs_created": [
+    "statistical_results.json",
+    "significance_tests.csv",
+    "charts/bid_ask_trends.png",
+    "charts/volume_analysis.png",
+    "charts/regulatory_events.png",
+    "interactive_dashboard.html"
+  ],
+  "dry_run_metadata": {
+    "simulated": true,
+    "actual_execution": false,
+    "validation_passed": true
+  }
+}

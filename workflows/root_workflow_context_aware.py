@@ -55,7 +55,7 @@ class RootWorkflowAgentContextAware(BaseAgent):
             session_state = ctx.session._typed_state
         else:
             # Create new SessionState from existing dict state
-            task_id = ctx.session.state.get('task_id', 'research_session')
+            task_id = ctx.session.state.get('task_id', config.TASK_ID)
             
             if 'task_file_path' in ctx.session.state:
                 # Convert existing dict state to SessionState
@@ -97,10 +97,18 @@ class RootWorkflowAgentContextAware(BaseAgent):
         if not session_state.task_file_path:
             import os
             session_state.task_file_path = os.path.join(config.TASKS_DIR, 'sample_research_task.md')
-        session_state.metadata['outputs_dir'] = config.OUTPUTS_DIR
         
-        # Initialize validation
-        session_state.artifact_to_validate = f"{config.OUTPUTS_DIR}/research_plan_v0.md"
+        # Use dynamic outputs directory based on session task_id
+        dynamic_outputs_dir = config.get_outputs_dir(session_state.task_id)
+        session_state.metadata['outputs_dir'] = dynamic_outputs_dir
+        
+        # Create the task-specific output directory if it doesn't exist
+        import os
+        os.makedirs(dynamic_outputs_dir, exist_ok=True)
+        print(f"📁 Using task-specific outputs directory: {dynamic_outputs_dir}")
+        
+        # Initialize validation using the correct task-specific path
+        session_state.artifact_to_validate = f"{dynamic_outputs_dir}/research_plan_v0.md"
         session_state.validation_info.validation_version = 0
         
         # Replace session state for template access
@@ -180,6 +188,15 @@ class RootWorkflowAgentContextAware(BaseAgent):
         print("\n✅ CONTEXT-AWARE RESEARCH WORKFLOW COMPLETE!")
         print(f"📊 Final report: {final_report_path}")
         print(f"🔍 All validations performed with context awareness")
+        
+        # Show comprehensive dry run summary if in dry run mode
+        if config.DRY_RUN_MODE and config.DRY_RUN_COMPREHENSIVE_PATH_TESTING:
+            from ..tools.mock_tools import get_dry_run_summary
+            print("\n" + "="*80)
+            print("🧪 COMPREHENSIVE DRY RUN TESTING SUMMARY")
+            print("="*80)
+            print(get_dry_run_summary())
+            print("="*80)
 
 
 def get_context_aware_root_workflow():

@@ -1,0 +1,37 @@
+{
+  "task_id": "sample_research_task",
+  "statistical_tests": {
+    "t_tests": {
+      "bid_ask_spreads_2020_vs_2024": {
+        "t_statistic": -12.45,
+        "p_value": 0.0001,
+        "effect_size": 0.68,
+        "interpretation": "highly_significant_decrease"
+      }
+    },
+    "regression_analysis": {
+      "market_depth_model": {
+        "r_squared": 0.76,
+        "f_statistic": 234.5,
+        "p_value": 0.0,
+        "coefficients": {
+          "retail_volume": 0.42,
+          "volatility": -0.18,
+          "time_trend": 0.23
+        }
+      }
+    },
+    "event_studies": {
+      "regulatory_announcements": {
+        "abnormal_returns": {
+          "day_minus_1": 0.002,
+          "day_0": -0.008,
+          "day_plus_1": 0.001
+        },
+        "cumulative_abnormal_return": -0.005,
+        "statistical_significance": "p < 0.05"
+      }
+    }
+  },
+  "dry_run": true
+}

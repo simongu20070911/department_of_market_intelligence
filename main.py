@@ -51,6 +51,7 @@ from .workflows.root_workflow import RootWorkflowAgent
 from .workflows.root_workflow_context_aware import RootWorkflowAgentContextAware
 from . import config
 from .config import TASKS_DIR, VERBOSE_LOGGING
+from .utils.task_loader import load_task_description, validate_task_id, get_task_file_path, create_task_loading_summary
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -118,15 +119,30 @@ async def main(resume_from_checkpoint: str = None):
         artifact_service=artifact_service,
     )
 
-    # Prepare the initial session state
+    # Prepare the initial session state with explicit task loading
     if initial_state is None:
-        import os as _os
-        task_file = _os.path.join(TASKS_DIR, "sample_research_task.md")
-        print(f"DEBUG: TASKS_DIR = {TASKS_DIR}")
-        print(f"DEBUG: task_file = {task_file}")
-        print(f"DEBUG: file exists = {_os.path.exists(task_file)}")
-        initial_state = {"task_file_path": task_file}
-        print(f"--- Starting Research Task from {task_file} ---")
+        # Validate task ID and load task content
+        if not validate_task_id(config.TASK_ID):
+            print(f"❌ ERROR: Task '{config.TASK_ID}' not found!")
+            print("\n" + create_task_loading_summary())
+            return
+        
+        task_file_path = get_task_file_path(config.TASK_ID)
+        print(f"📋 Task Configuration:")
+        print(f"   • Task ID: {config.TASK_ID}")
+        print(f"   • Task File: {task_file_path}")
+        print(f"   • Tasks Directory: {TASKS_DIR}")
+        
+        # Verify task file exists and is readable
+        try:
+            task_content = load_task_description(config.TASK_ID)
+            print(f"   • Task Content: {len(task_content)} characters, {task_content.count(chr(10)) + 1} lines")
+        except Exception as e:
+            print(f"❌ ERROR: Failed to load task '{config.TASK_ID}': {e}")
+            return
+        
+        initial_state = {"task_file_path": task_file_path}
+        print(f"--- Starting Research Task from {task_file_path} ---")
     else:
         print(f"--- Resuming Research Task: {initial_state.get('task_file_path', 'Unknown')} ---")
     
@@ -146,18 +162,26 @@ async def main(resume_from_checkpoint: str = None):
         new_message=start_message
     ):
         # You can process and print events here for real-time monitoring
-        if event.content and event.content.parts:
-            for part in event.content.parts:
-                if part.text:
-                    if event.partial:
-                        # Print partial text on the same line
-                        sys.stdout.write(part.text)
-                        sys.stdout.flush()
-                    else:
-                        # Once the full text is received, print a newline
-                        print(f"\n[{event.author}]: {part.text.strip()}")
-                if part.function_call:
-                    print(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
+        if config.STREAMING_ENABLED:
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    if part.text:
+                        if event.partial:
+                            # Print partial text on the same line
+                            sys.stdout.write(part.text)
+                            sys.stdout.flush()
+                        else:
+                            # Once the full text is received, print a newline
+                            print(f"\n[{event.author}]: {part.text.strip()}")
+                    if part.function_call:
+                        print(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
+        else:
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    if part.text:
+                        print(f"[{event.author}]: {part.text.strip()}")
+                    if part.function_call:
+                        print(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
 
 if __name__ == "__main__":
     asyncio.run(main())

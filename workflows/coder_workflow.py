@@ -207,8 +207,8 @@ class CoderWorkflowAgent(BaseAgent):
                 with open(manifest_path, 'r') as f:
                     manifest_content = f.read()
                 
-                # Try to extract tasks from manifest (this would need proper parsing)
-                tasks = []  # Parse tasks from manifest_content
+                # Parse tasks from manifest
+                tasks = json.loads(manifest_content)
                 
                 if not tasks:
                     print("CODER WORKFLOW: No coding tasks found in manifest.")
