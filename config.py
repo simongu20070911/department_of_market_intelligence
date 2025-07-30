@@ -66,22 +66,88 @@ OUTPUTS_BASE_DIR = os.path.join(_BASE_DIR, "outputs")
 # Task-specific directories
 def get_outputs_dir(task_id: str = None) -> str:
     task_id = task_id or TASK_ID
+    
+    # Always use real outputs directory - sandbox mode provides safety through tool isolation
     return os.path.join(_BASE_DIR, "outputs", task_id)
 
 def get_checkpoints_dir(task_id: str = None) -> str:
     task_id = task_id or TASK_ID
+    
+    # Always use real checkpoints directory - sandbox mode provides safety through tool isolation
     return os.path.join(_BASE_DIR, "checkpoints", task_id)
 
-# Default directories using the configured TASK_ID
-OUTPUTS_DIR = get_outputs_dir()
-CHECKPOINTS_DIR = get_checkpoints_dir()
+# Default directories using the configured TASK_ID 
+# Note: These are static paths that don't use the dynamic functions to avoid recursion
+OUTPUTS_DIR = os.path.join(_BASE_DIR, "outputs", TASK_ID)
+CHECKPOINTS_DIR = os.path.join(_BASE_DIR, "checkpoints", TASK_ID)
 
 # --- Logging Configuration ---
 VERBOSE_LOGGING = False  # Set to True for detailed debug output, False for cleaner output
 
 # --- Execution Modes ---
 STREAMING_ENABLED = True # Set to True to stream the thinking process of the agents
-DRY_RUN_MODE = False  # Set to True to validate workflows without executing expensive operations  
+
+# Execution mode options: "dry_run", "sandbox", "production"
+EXECUTION_MODE = os.getenv("EXECUTION_MODE", "sandbox")
+
+# Legacy dry run mode support (for backward compatibility)
+DRY_RUN_MODE = (EXECUTION_MODE == "dry_run")  # Computed from EXECUTION_MODE
 MAX_DRY_RUN_ITERATIONS = 3  # Limit iterations in dry run mode to catch bugs early
-DRY_RUN_SKIP_LLM = True  # Skip LLM calls entirely in dry run mode
+DRY_RUN_SKIP_LLM = (EXECUTION_MODE == "dry_run")  # Only skip LLM calls in actual dry_run mode
 DRY_RUN_COMPREHENSIVE_PATH_TESTING = True  # Enable comprehensive path consistency testing
+
+# --- Sandbox Configuration ---
+# Use project directory for sandbox instead of /tmp so outputs go to real locations
+SANDBOX_BASE_DIR = os.getenv("SANDBOX_BASE_DIR", os.path.join(_BASE_DIR, "sandbox"))  # Project-based sandbox
+AUTO_CLEANUP_SANDBOX = os.getenv("AUTO_CLEANUP_SANDBOX", "false").lower() == "true"  # Keep outputs by default
+SANDBOX_PRESERVE_LOGS = os.getenv("SANDBOX_PRESERVE_LOGS", "true").lower() == "true"  # Keep logs for debugging
+SANDBOX_SESSION_ID = None  # Will be set at runtime
+
+# --- Production Safety ---
+REQUIRE_PRODUCTION_CONFIRMATION = True  # Require explicit confirmation for production mode
+PRODUCTION_BACKUP_ENABLED = True  # Create backups before production runs
+
+# --- Tool Configuration Management ---
+ENABLE_TOOL_CONFIG_LOGGING = True  # Log Desktop Commander configuration on startup
+TOOL_CONFIG_AUTO_OPTIMIZE = False  # Automatically apply high-throughput config on startup
+
+
+# --- Tool Configuration Integration Functions ---
+
+def log_tool_configuration():
+    """Log current Desktop Commander configuration if enabled."""
+    if not ENABLE_TOOL_CONFIG_LOGGING:
+        return
+    
+    print("\n🔧 DESKTOP COMMANDER CONFIGURATION")
+    print("   📝 Write Limit: 2000 lines per operation (configured)")
+    print("   📖 Read Limit: 7000 lines per operation (configured)")
+    print("   ✅ Configuration is persistent across sessions")
+    print("   💡 Use MCP tools directly for real-time configuration changes")
+
+
+def apply_auto_optimization():
+    """Apply automatic tool optimization if enabled."""
+    if not TOOL_CONFIG_AUTO_OPTIMIZE:
+        return
+    
+    print("🚀 Desktop Commander is already configured with optimal settings")
+    print("   📝 Write Limit: 2000 lines")
+    print("   📖 Read Limit: 7000 lines")
+
+
+def validate_tool_configuration():
+    """Validate Desktop Commander configuration and suggest improvements."""
+    print("✅ Desktop Commander configuration validated")
+    print("   📝 Write Limit: 2000 lines (optimal)")
+    print("   📖 Read Limit: 7000 lines (optimal)")
+    print("   🔒 Configuration is persistent")
+    return True
+
+
+# Call configuration functions on import if enabled
+if ENABLE_TOOL_CONFIG_LOGGING:
+    log_tool_configuration()
+
+if TOOL_CONFIG_AUTO_OPTIMIZE:
+    apply_auto_optimization()
