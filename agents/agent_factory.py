@@ -19,8 +19,8 @@ async def get_chief_researcher_agent_async() -> LlmAgent:
     if "Chief_Researcher" in _agent_cache:
         return _agent_cache["Chief_Researcher"]
     
-    # Use mock agent in dry run mode
-    if config.DRY_RUN_MODE and config.DRY_RUN_SKIP_LLM:
+    # Only use mock agent in actual dry_run mode with LLM skipping
+    if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
         from ..tools.mock_llm_agent import create_mock_llm_agent
         agent = create_mock_llm_agent(name="Chief_Researcher")
         _agent_cache["Chief_Researcher"] = agent
@@ -55,8 +55,8 @@ async def get_orchestrator_agent_async() -> LlmAgent:
     if "Orchestrator" in _agent_cache:
         return _agent_cache["Orchestrator"]
     
-    # Use mock agent in dry run mode
-    if config.DRY_RUN_MODE and config.DRY_RUN_SKIP_LLM:
+    # Only use mock agent in actual dry_run mode with LLM skipping
+    if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
         from ..tools.mock_llm_agent import create_mock_llm_agent
         agent = create_mock_llm_agent(name="Orchestrator")
         _agent_cache["Orchestrator"] = agent

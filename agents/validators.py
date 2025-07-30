@@ -8,7 +8,7 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 from .. import config
 from ..utils.model_loader import get_llm_model
-from google.adk.agents.llm_agent import InstructionProvider
+from google.adk.agents.llm_agent import InstructionProvider, ReadonlyContext
 from ..prompts.definitions.validators import (
     JUNIOR_VALIDATOR_INSTRUCTIONS,
     SENIOR_VALIDATOR_INSTRUCTIONS
@@ -63,7 +63,7 @@ def get_junior_validator_agent():
             )
         ]
         
-    def instruction_provider(ctx: "ReadonlyContext") -> str:
+    def instruction_provider(ctx: ReadonlyContext) -> str:
         context_type = ctx.state.get("validation_context", "research_plan")
         return JUNIOR_VALIDATOR_INSTRUCTIONS.get(context_type, JUNIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
 
@@ -106,7 +106,7 @@ def get_senior_validator_agent():
             )
         ]
         
-    def instruction_provider(ctx: "ReadonlyContext") -> str:
+    def instruction_provider(ctx: ReadonlyContext) -> str:
         context_type = ctx.state.get("validation_context", "research_plan")
         return SENIOR_VALIDATOR_INSTRUCTIONS.get(context_type, SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
 
@@ -121,7 +121,8 @@ def get_senior_validator_agent():
 def create_specialized_parallel_validator(validator_type: str, index: int) -> BaseAgent:
     """Create a specialized validator for parallel validation based on context."""
     
-    if config.DRY_RUN_MODE and config.DRY_RUN_SKIP_LLM:
+    # Only use mock agent in actual dry_run mode with LLM skipping
+    if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name=f"{validator_type}_{index}")
     
@@ -265,7 +266,7 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
         End with "<end of output>".
         """
 
-    def instruction_provider(ctx: "ReadonlyContext") -> str:
+    def instruction_provider(ctx: ReadonlyContext) -> str:
         # Use the actual task_id from the session (consistent with root workflow default)
         task_id = ctx.state.get("task_id", "research_session")
         outputs_dir = config.get_outputs_dir(task_id)
