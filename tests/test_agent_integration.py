@@ -25,7 +25,7 @@ async def test_checkpoint_with_session_state():
     # Create a SessionState
     session = SessionState(task_id="checkpoint_test")
     session.current_phase = "implementation"
-    session.plan_artifact_name = "outputs/research_plan_v1.md"
+    session.plan_artifact_name = "outputs/checkpoint_test/planning/research_plan_v1.md"
     session.validation_info.validation_status = "approved"
     session.validation_info.validation_version = 3
     

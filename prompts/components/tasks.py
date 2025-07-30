@@ -29,7 +29,7 @@ If the current task is 'generate_final_report':
 1.  Load the final approved research plan from {plan_artifact_name?}.
 2.  Load the final, aggregated experiment results from {results_artifact_name?}.
 3.  Synthesize all information into a comprehensive, publication-quality research report. The report must directly address the goals and required outputs outlined in the plan.
-4.  Use `write_file` to save the report to `{outputs_dir}/deliverables/final_report.md`."""
+4.  Use `write_file` to save the report to `{outputs_dir}/results/deliverables/final_report.md`."""
 
 # Orchestrator Tasks
 GENERATE_IMPLEMENTATION_PLAN_TASK = """### Task: 'generate_implementation_plan' ###
@@ -102,7 +102,7 @@ SENIOR_VALIDATOR_CORE_TASK = """1. Load and analyze both the primary artifact an
 JUNIOR_VALIDATOR_OUTPUT_REQUIREMENTS = """- If you find critical issues, list them clearly and concisely
 - For each issue, explain WHY it's critical and its potential impact
 - If no critical issues found, write: "No critical issues found."
-- Use `write_file` to save your critique to `{outputs_dir}/junior_critique_v{validation_version}.md`
+- Use `write_file` to save your critique to `{outputs_dir}/planning/critiques/junior_critique_v{validation_version}.md`
 - Include a section "Key Files Reviewed:" listing important files you examined"""
 
 # Senior Validator Specific Tasks
@@ -113,7 +113,7 @@ SENIOR_VALIDATOR_RECURSIVE_LOADING = """You have the ability to recursively load
 - Build a complete understanding of the work in its full context"""
 
 SENIOR_VALIDATOR_SYNTHESIS = """1. Synthesize junior validator findings with your comprehensive analysis
-2. Write detailed critique to `{outputs_dir}/senior_critique_v{validation_version}.md`
+2. Write detailed critique to `{outputs_dir}/planning/critiques/senior_critique_v{validation_version}.md`
 3. Include sections:
    - "Junior Validator Findings Addressed"
    - "Additional Critical Analysis"

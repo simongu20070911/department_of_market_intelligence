@@ -29,6 +29,12 @@ class PromptBuilder:
         from .base import COMMUNICATION_PROTOCOL
         return self.add_section(COMMUNICATION_PROTOCOL, ['agent_name', 'outputs_dir', 'current_task'])
     
+    def add_communication_protocol_with_path_validation(self) -> 'PromptBuilder':
+        """Add enhanced communication protocol with path validation."""
+        from .base import COMMUNICATION_PROTOCOL_WITH_PATH_VALIDATION, PATH_VALIDATION_RULES
+        return (self.add_section(COMMUNICATION_PROTOCOL_WITH_PATH_VALIDATION, ['agent_name', 'outputs_dir', 'current_task'])
+                   .add_section(PATH_VALIDATION_RULES, ['outputs_dir']))
+    
     def add_context(self) -> 'PromptBuilder':
         """Add standard context section."""
         from .base import BASE_CONTEXT
@@ -43,6 +49,11 @@ class PromptBuilder:
         """Add file path context section."""
         from .base import FILE_PATH_CONTEXT
         return self.add_section(FILE_PATH_CONTEXT, ['task_id', 'outputs_dir', 'task_file_path'])
+    
+    def add_directory_structure_spec(self) -> 'PromptBuilder':
+        """Add comprehensive directory structure specification."""
+        from .base import DIRECTORY_STRUCTURE_SPEC
+        return self.add_section(DIRECTORY_STRUCTURE_SPEC, ['outputs_dir', 'validation_version'])
     
     def add_tasks(self, tasks: List[str]) -> 'PromptBuilder':
         """Add multiple task sections."""

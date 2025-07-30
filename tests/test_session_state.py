@@ -25,7 +25,7 @@ def test_basic_session_state():
         print(f"✓ Type validation works: {e}")
     
     # Test artifact path validation
-    session.plan_artifact_name = "outputs/research_plan_v0.md"
+    session.plan_artifact_name = "outputs/test_research_001/planning/research_plan_v0.md"
     print(f"✓ Set plan artifact: {session.plan_artifact_name}")
     
     # Test validation info
@@ -74,7 +74,7 @@ def test_legacy_migration():
     # Simulate legacy state
     legacy_state = {
         'current_task': 'generate_initial_plan',
-        'plan_artifact_name': 'outputs/research_plan_v0.md',
+        'plan_artifact_name': 'outputs/legacy_task/planning/research_plan_v0.md',
         'plan_version': 0,
         'validation_status': 'pending',
         'validation_version': 0,

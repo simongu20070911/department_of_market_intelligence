@@ -26,7 +26,7 @@ async def test_path_validation():
     
     # Test 1: Correct path usage
     print("🧪 Test 1: Correct task-specific paths")
-    correct_path = f"/home/gaen/agents_gaen/department_of_market_intelligence/outputs/{config.TASK_ID}/research_plan_v0.md"
+    correct_path = f"/home/gaen/agents_gaen/department_of_market_intelligence/outputs/{config.TASK_ID}/planning/research_plan_v0.md"
     await write_file(correct_path, "Test research plan content", "rewrite")
     content = await read_file(correct_path)
     print(f"✅ Read back: {len(content)} chars")
@@ -34,7 +34,7 @@ async def test_path_validation():
     
     # Test 2: Incorrect path usage (should trigger warnings)
     print("🧪 Test 2: Incorrect old task paths (should warn)")
-    wrong_path = "/home/gaen/agents_gaen/department_of_market_intelligence/outputs/default_research_task/research_plan_v1.md"
+    wrong_path = "/home/gaen/agents_gaen/department_of_market_intelligence/outputs/default_research_task/planning/research_plan_v1.md"
     await write_file(wrong_path, "This should trigger path inconsistency warning", "rewrite")
     print()
     
