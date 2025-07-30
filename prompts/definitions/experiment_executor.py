@@ -9,6 +9,7 @@ EXPERIMENT_EXECUTOR_INSTRUCTION = (
     .add_section("### Persona ###")
     .add_section(EXPERIMENT_EXECUTOR_PERSONA)
     .add_communication_protocol()
+    .add_directory_structure_spec()
     .add_section("### Context & State ###")
     .add_section(EXPERIMENT_EXECUTOR_CONTEXT)
     .add_section("### Task ###")

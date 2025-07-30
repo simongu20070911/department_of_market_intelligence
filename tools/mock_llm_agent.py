@@ -308,7 +308,7 @@ Task ID: {task_id}
                 print(f"📋 [{self.name}]: Plan includes methodology, experiments, and timeline. Ready for validation!")
                 
                 # Update session state
-                ctx.session.state['plan_artifact_name'] = 'outputs/research_plan_v0.md'
+                ctx.session.state['plan_artifact_name'] = f'outputs/{task_id}/planning/research_plan_v0.md'
                 ctx.session.state['plan_version'] = 0
                 ctx.session.state['artifact_to_validate'] = plan_path
                 
@@ -359,7 +359,7 @@ Task ID: {task_id}
                     f.write(plan_content)
                 print(f"[DRY RUN] ✅ Created: {plan_path}")
                 
-                ctx.session.state['plan_artifact_name'] = f'outputs/research_plan_v{version}.md'
+                ctx.session.state['plan_artifact_name'] = f'outputs/{task_id}/planning/research_plan_v{version}.md'
                 ctx.session.state['plan_version'] = version
                 ctx.session.state['artifact_to_validate'] = plan_path
                 print(f"[DRY RUN] {self.name} refined plan to version {version}")

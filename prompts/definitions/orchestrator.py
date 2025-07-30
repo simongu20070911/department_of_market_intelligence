@@ -46,7 +46,8 @@ feature_matrix_assembly → [model_rf, model_xgb, model_nn, model_linear]
     
     return builder\
         .add_persona(ORCHESTRATOR_PERSONA)\
-        .add_communication_protocol()\
+        .add_communication_protocol_with_path_validation()\
+        .add_directory_structure_spec()\
         .add_context()\
         .add_tasks([
             GENERATE_IMPLEMENTATION_PLAN_TASK,

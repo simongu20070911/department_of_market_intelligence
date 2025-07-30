@@ -102,13 +102,14 @@ class RootWorkflowAgentContextAware(BaseAgent):
         dynamic_outputs_dir = config.get_outputs_dir(session_state.task_id)
         session_state.metadata['outputs_dir'] = dynamic_outputs_dir
         
-        # Create the task-specific output directory if it doesn't exist
-        import os
-        os.makedirs(dynamic_outputs_dir, exist_ok=True)
+        # Create the complete task-specific directory structure
+        from ..utils.directory_manager import create_task_directory_structure, get_directory_structure_summary
+        create_task_directory_structure(dynamic_outputs_dir)
         print(f"📁 Using task-specific outputs directory: {dynamic_outputs_dir}")
+        print(f"   {get_directory_structure_summary(dynamic_outputs_dir)}")
         
-        # Initialize validation using the correct task-specific path
-        session_state.artifact_to_validate = f"{dynamic_outputs_dir}/research_plan_v0.md"
+        # Initialize validation using the correct task-specific path (following directory structure)
+        session_state.artifact_to_validate = f"{dynamic_outputs_dir}/planning/research_plan_v0.md"
         session_state.validation_info.validation_version = 0
         
         # Replace session state for template access
