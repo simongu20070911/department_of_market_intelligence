@@ -1,44 +1,31 @@
 # /department_of_market_intelligence/agents/coder.py
 from google.adk.agents import LlmAgent
+from google.adk.agents.llm_agent import ReadonlyContext
 from .. import config
 from ..utils.callbacks import ensure_end_of_output
 from ..utils.model_loader import get_llm_model
 from ..prompts.definitions.coder import CODER_INSTRUCTION
 
 def get_coder_agent():
-    # Use mock agent in dry run mode
-    if config.DRY_RUN_MODE and config.DRY_RUN_SKIP_LLM:
+    """Create Coder agent with execution-mode-aware tools."""
+    # Only use mock agent in actual dry_run mode with LLM skipping
+    if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name="Coder_Agent")
     
-    # Use mock tools in dry run mode
-    if config.DRY_RUN_MODE:
-        from ..tools.mock_tools import mock_desktop_commander_toolset
-        tools = mock_desktop_commander_toolset
-    else:
-        # Create MCP toolset inline as per ADK documentation
-        from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
-        from mcp.client.stdio import StdioServerParameters
-        import os
-        
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        
-        tools = [
-            MCPToolset(
-                connection_params=StdioConnectionParams(
-                    server_params=StdioServerParameters(
-                        command=config.DESKTOP_COMMANDER_COMMAND,
-                        args=config.DESKTOP_COMMANDER_ARGS,
-                        cwd=project_root
-                    )
-                )
-            )
-        ]
+    # Create tools based on execution mode
+    from ..utils.tool_factory import create_agent_tools
+    tools = create_agent_tools("Coder_Agent")
+    
+    # Create instruction provider for dynamic template variable injection  
+    def instruction_provider(ctx: "ReadonlyContext") -> str:
+        from ..prompts.builder import inject_template_variables
+        return inject_template_variables(CODER_INSTRUCTION, ctx, "Coder_Agent")
         
     return LlmAgent(
         model=get_llm_model(config.CODER_MODEL),
         name="Coder_Agent",
-        instruction=CODER_INSTRUCTION,
+        instruction=instruction_provider,
         tools=tools,
         after_model_callback=ensure_end_of_output
     )
