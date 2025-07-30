@@ -77,10 +77,64 @@ EXECUTE_EXPERIMENTS_TASK = """### Task ###
 2.  Execute the scripts in the correct order based on their dependencies. Use the `start_process` tool to run each Python script.
 3.  Keep a detailed journal of every command you run, its output, and any errors encountered.
 4.  If a script fails with a critical, unrecoverable error that indicates a flaw in the code's logic (NOT a transient issue like a network timeout):
-    a. Write your complete journal, including the detailed error, to an artifact named `{outputs_dir}/results/execution_error_report.md`.
+    a. Write your complete journal, including the detailed error, to an artifact named `outputs/execution_error_report.md`.
     b. Set the session state: `state['execution_status'] = 'critical_error'`.
-    c. Set the session state: `state['error_report_artifact'] = 'outputs/{task_id}/results/execution_error_report.md'`.
+    c. Set the session state: `state['error_report_artifact'] = 'outputs/execution_error_report.md'`.
     d. STOP further execution.
 5.  If all scripts execute successfully:
-    a. Write your complete journal to an artifact named `{outputs_dir}/results/execution_journal.md`.
+    a. Write your complete journal to an artifact named `outputs/execution_journal.md`.
     b. Set the session state: `state['execution_status'] = 'success'`."""
+
+# Validator Tasks
+JUNIOR_VALIDATOR_CORE_TASK = """1. Use the `read_file` tool to load the artifact specified in {artifact_to_validate}
+2. Identify the validation context from {validation_context?} to understand what type of artifact you're validating
+3. Apply context-specific validation based on the artifact type:
+
+{context_specific_prompt}"""
+
+SENIOR_VALIDATOR_CORE_TASK = """1. Load and analyze both the primary artifact and junior critique using `read_file`
+2. Identify the validation context to understand what you're validating
+3. Apply deep, context-specific analysis based on the artifact type:
+
+{context_specific_prompt}"""
+
+# Validator Output Requirements
+JUNIOR_VALIDATOR_OUTPUT_REQUIREMENTS = """- If you find critical issues, list them clearly and concisely
+- For each issue, explain WHY it's critical and its potential impact
+- If no critical issues found, write: "No critical issues found."
+- Use `write_file` to save your critique to `{outputs_dir}/junior_critique_v{validation_version}.md`
+- Include a section "Key Files Reviewed:" listing important files you examined"""
+
+# Senior Validator Specific Tasks
+SENIOR_VALIDATOR_RECURSIVE_LOADING = """You have the ability to recursively load additional context:
+- Use `list_directory` to explore relevant directories
+- Use `read_file` to examine dependencies, related files, or previous versions
+- Use `search_code` to find implementations or definitions
+- Build a complete understanding of the work in its full context"""
+
+SENIOR_VALIDATOR_SYNTHESIS = """1. Synthesize junior validator findings with your comprehensive analysis
+2. Write detailed critique to `{outputs_dir}/senior_critique_v{validation_version}.md`
+3. Include sections:
+   - "Junior Validator Findings Addressed"
+   - "Additional Critical Analysis"
+   - "Recommendations for Improvement"
+   - "Key Files Reviewed" (list all files examined)
+   
+4. Make final judgment - set `state['validation_status']` to:
+   - 'approved': Work meets all quality standards
+   - 'rejected': Needs refinement but fixable
+   - 'critical_error': Fundamental issues requiring major rework"""
+
+SENIOR_VALIDATOR_DECISION_CRITERIA = """- For 'approved': No critical issues, minor improvements optional
+- For 'rejected': Issues that must be fixed but approach is sound
+- For 'critical_error': Fundamental flaws in approach or execution"""
+
+# Validator Restrictions
+VALIDATOR_RESTRICTIONS = """- You are a VALIDATOR only - you MUST NOT edit, modify, or rewrite the research plan
+- Your job is to CRITIQUE, not to fix or improve the original artifact
+- ONLY create critique files, NEVER modify the research plan itself"""
+
+SENIOR_VALIDATOR_RESTRICTIONS = """- You are a VALIDATOR only - you MUST NOT edit, modify, or rewrite the research plan
+- Your job is to CRITIQUE and APPROVE/REJECT, not to fix or improve the original artifact
+- ONLY create critique files, NEVER modify the research plan itself
+- If you identify issues, document them in your critique - do NOT fix them yourself"""
