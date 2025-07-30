@@ -47,7 +47,6 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.adk.artifacts import InMemoryArtifactService
 from google.genai.types import Content, Part
-from .workflows.root_workflow import RootWorkflowAgent
 from .workflows.root_workflow_context_aware import RootWorkflowAgentContextAware
 from . import config
 from .config import TASKS_DIR, VERBOSE_LOGGING
@@ -104,13 +103,9 @@ async def main(resume_from_checkpoint: str = None):
         print(f"🚀 STARTING NEW TASK: {config.TASK_ID}")
         initial_state = None
 
-    # The root of our agentic system - use context-aware if enabled
-    if config.ENABLE_CONTEXT_AWARE_VALIDATION:
-        print("🔍 Using CONTEXT-AWARE validation system")
-        root_agent = RootWorkflowAgentContextAware(name="MarketAlpha_Root")
-    else:
-        print("📋 Using standard validation system")
-        root_agent = RootWorkflowAgent(name="MarketAlpha_Root")
+    # The root of our agentic system - using integrated context-aware validation
+    print("🔍 Using context-aware validation system")
+    root_agent = RootWorkflowAgentContextAware(name="MarketAlpha_Root")
 
     runner = Runner(
         agent=root_agent,

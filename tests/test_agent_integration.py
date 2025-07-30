@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from .utils.state_model import SessionState
 from .utils.state_adapter import StateAdapter, StateProxy
 from .utils.checkpoint_manager import CheckpointManager
-from agents.validators_updated import MetaValidatorCheckAgentV2, SeniorValidatorV2
+from agents.validators import MetaValidatorCheckAgent, get_senior_validator_agent
 import config
 
 
@@ -78,7 +78,7 @@ async def test_agent_with_session_state():
     # Test 1: Direct SessionState
     print("\nTest 1: Direct SessionState")
     ctx.session.state = state
-    agent = MetaValidatorCheckAgentV2(name="MetaValidator_Direct")
+    agent = MetaValidatorCheckAgent(name="MetaValidator_Direct")
     
     events = []
     async for event in agent.run_async(ctx):
@@ -121,9 +121,9 @@ async def test_agent_with_session_state():
     assert state.get_execution_status() == 'critical_error'
 
 
-async def test_senior_validator_v2():
-    """Test the fully migrated SeniorValidatorV2."""
-    print("\n=== Testing SeniorValidatorV2 ===")
+async def test_senior_validator():
+    """Test the senior validator."""
+    print("\n=== Testing Senior Validator ===")
     
     # Set dry run mode for testing
     original_dry_run = config.DRY_RUN_MODE
@@ -141,13 +141,13 @@ async def test_senior_validator_v2():
         ctx.session.state = state
         
         # Run the validator
-        validator = SeniorValidatorV2()
+        validator = get_senior_validator_agent()
         
         events = []
         async for event in validator.run_async(ctx):
             events.append(event)
         
-        print(f"✓ SeniorValidatorV2 executed successfully")
+        print(f"✓ Senior validator executed successfully")
         print(f"  - Validation status: {state.get_validation_status()}")
         print(f"  - Senior critique: {state.validation_info.senior_critique_artifact}")
         
@@ -199,7 +199,7 @@ async def main():
         # Run tests
         checkpoint_id = await test_checkpoint_with_session_state()
         await test_agent_with_session_state()
-        await test_senior_validator_v2()
+        await test_senior_validator()
         await test_state_proxy_with_agents()
         
         print("\n" + "=" * 50)
