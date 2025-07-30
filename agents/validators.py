@@ -34,8 +34,8 @@ def get_validation_context_prompt(context_type: str, role: str) -> str:
 
 def get_junior_validator_agent():
     """Create a context-aware junior validator."""
-    # Use mock agent in dry run mode
-    if config.DRY_RUN_MODE and config.DRY_RUN_SKIP_LLM:
+    # Only use mock agent in actual dry_run mode with LLM skipping
+    if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name="Junior_Validator")
     
@@ -77,8 +77,8 @@ def get_junior_validator_agent():
 
 def get_senior_validator_agent():
     """Create a context-aware senior validator with recursive context loading capability."""
-    # Use mock agent in dry run mode
-    if config.DRY_RUN_MODE and config.DRY_RUN_SKIP_LLM:
+    # Only use mock agent in actual dry_run mode with LLM skipping
+    if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name="Senior_Validator")
     
@@ -127,8 +127,8 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
     
     # Import and create tools only when needed
     if not config.DRY_RUN_MODE:
-        from google.adk.tools.mcp_toolset import MCPToolset
-        from google.adk.mcp.stdio import StdioConnectionParams, StdioServerParameters
+        from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
+        from mcp.client.stdio import StdioServerParameters
         
         desktop_commander_toolset = MCPToolset(
             connection_params=StdioConnectionParams(

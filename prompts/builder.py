@@ -79,6 +79,41 @@ class PromptBuilder:
         return self.required_vars.copy()
 
 
+def inject_template_variables(template: str, ctx, agent_name: str) -> str:
+    """Inject all template variables needed by the enhanced communication protocol."""
+    from .. import config
+    from datetime import datetime
+    
+    # Get basic variables from context and config
+    task_id = ctx.state.get("task_id", "research_session")
+    outputs_dir = config.get_outputs_dir(task_id)
+    current_task = ctx.state.get("current_task", "research_planning")
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    current_year = datetime.now().year
+    validation_version = ctx.state.get("validation_version", 0)
+    
+    # Get task file path
+    task_file_path = f"{config.TASKS_DIR}/{task_id}.md"
+    
+    # Replace all template variables
+    result = template
+    replacements = {
+        "{agent_name}": agent_name,
+        "{outputs_dir}": outputs_dir,
+        "{current_task}": current_task,
+        "{current_date}": current_date, 
+        "{current_year}": str(current_year),
+        "{task_id}": task_id,
+        "{validation_version}": str(validation_version),
+        "{task_file_path}": task_file_path,
+    }
+    
+    for placeholder, value in replacements.items():
+        result = result.replace(placeholder, value)
+    
+    return result
+
+
 class ContextAwarePromptBuilder(PromptBuilder):
     """Extended builder with context-aware features."""
     
