@@ -380,6 +380,11 @@ class MetaValidatorCheckAgent(BaseAgent):
         await asyncio.sleep(0)
 
 
+def get_parallel_final_validation_agent():
+    """Get parallel final validation agent instance."""
+    return ParallelFinalValidationAgent(name="ParallelFinalValidation")
+
+
 # Export the context-aware validator functions
 def get_context_aware_validators():
     """Get all context-aware validators."""
