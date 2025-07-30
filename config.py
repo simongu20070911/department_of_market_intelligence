@@ -34,7 +34,7 @@ PARALLEL_VALIDATION_SAMPLES = 4
 MAX_ORCHESTRATOR_REFINEMENT_LOOPS = 5  # For implementation manifest refinement
 
 # --- Validation Settings ---
-ENABLE_CONTEXT_AWARE_VALIDATION = True  # Use context-aware validators
+# (No special configuration needed - using integrated context-aware validators)
 
 # --- Tool Configurations ---
 # This assumes the npx command is in the system's PATH

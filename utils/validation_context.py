@@ -149,7 +149,7 @@ class ValidationContextManager:
             Modified instruction with context-specific prompts
         """
         # Import here to avoid circular dependency
-        from ..agents.validators_context_aware import get_validation_context_prompt
+        from ..agents.validators import get_validation_context_prompt
         
         context_prompt = get_validation_context_prompt(context_type, role)
         

@@ -8,7 +8,7 @@ from typing import AsyncGenerator
 import asyncio
 
 from ..agents.chief_researcher import get_chief_researcher_agent
-from ..agents.validators_context_aware import (
+from ..agents.validators import (
     get_junior_validator_agent, 
     get_senior_validator_agent, 
     MetaValidatorCheckAgent,
