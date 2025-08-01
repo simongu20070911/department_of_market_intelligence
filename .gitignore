@@ -14,8 +14,10 @@ develop-eggs/
 dist/
 downloads/
 eggs/
+sandbox/
 .eggs/
 lib/
+checkpoints/
 lib64/
 parts/
 sdist/

@@ -39,29 +39,9 @@ def get_junior_validator_agent():
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name="Junior_Validator")
     
-    # Use mock tools in dry run mode
-    if config.DRY_RUN_MODE:
-        from ..tools.mock_tools import mock_desktop_commander_toolset
-        tools = mock_desktop_commander_toolset
-    else:
-        # Create MCP toolset inline as per ADK documentation
-        from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
-        from mcp.client.stdio import StdioServerParameters
-        import os
-        
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        
-        tools = [
-            MCPToolset(
-                connection_params=StdioConnectionParams(
-                    server_params=StdioServerParameters(
-                        command=config.DESKTOP_COMMANDER_COMMAND,
-                        args=config.DESKTOP_COMMANDER_ARGS,
-                        cwd=project_root
-                    )
-                )
-            )
-        ]
+    # Use centralized tool factory instead of duplicating logic
+    from ..utils.tool_factory import create_agent_tools
+    tools = create_agent_tools("Junior_Validator")
         
     def instruction_provider(ctx: ReadonlyContext) -> str:
         context_type = ctx.state.get("validation_context", "research_plan")
@@ -82,29 +62,9 @@ def get_senior_validator_agent():
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name="Senior_Validator")
     
-    # Use mock tools in dry run mode
-    if config.DRY_RUN_MODE:
-        from ..tools.mock_tools import mock_desktop_commander_toolset
-        tools = mock_desktop_commander_toolset
-    else:
-        # Create MCP toolset inline as per ADK documentation
-        from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
-        from mcp.client.stdio import StdioServerParameters
-        import os
-        
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        
-        tools = [
-            MCPToolset(
-                connection_params=StdioConnectionParams(
-                    server_params=StdioServerParameters(
-                        command=config.DESKTOP_COMMANDER_COMMAND,
-                        args=config.DESKTOP_COMMANDER_ARGS,
-                        cwd=project_root
-                    )
-                )
-            )
-        ]
+    # Use centralized tool factory instead of duplicating logic
+    from ..utils.tool_factory import create_agent_tools
+    tools = create_agent_tools("Senior_Validator")
         
     def instruction_provider(ctx: ReadonlyContext) -> str:
         context_type = ctx.state.get("validation_context", "research_plan")
@@ -126,23 +86,9 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name=f"{validator_type}_{index}")
     
-    # Import and create tools only when needed
-    if not config.DRY_RUN_MODE:
-        from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
-        from mcp.client.stdio import StdioServerParameters
-        
-        desktop_commander_toolset = MCPToolset(
-            connection_params=StdioConnectionParams(
-                server_params=StdioServerParameters(
-                    command=config.DESKTOP_COMMANDER_COMMAND,
-                    args=config.DESKTOP_COMMANDER_ARGS,
-                ),
-                timeout=config.MCP_TIMEOUT_SECONDS
-            )
-        )
-        tools = [desktop_commander_toolset]
-    else:
-        tools = None
+    # Use centralized tool factory
+    from ..utils.tool_factory import create_agent_tools
+    tools = create_agent_tools(f"{validator_type}_{index}")
     
     validator_configs = {
         "research_plan": {

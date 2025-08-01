@@ -248,6 +248,7 @@ def apply_cli_overrides(args):
     if args.mode:
         config.EXECUTION_MODE = args.mode
         config.DRY_RUN_MODE = (args.mode == "dry_run")
+        config.DRY_RUN_SKIP_LLM = (args.mode == "dry_run")
         os.environ["EXECUTION_MODE"] = args.mode
         print(f"🔧 Execution mode set to: {args.mode}")
     
