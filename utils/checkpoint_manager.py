@@ -10,8 +10,6 @@ from typing import Dict, Any, Optional, List
 from pathlib import Path
 
 from .. import config
-from .state_model import SessionState
-from .state_adapter import StateAdapter
 
 
 class CheckpointManager:
@@ -32,7 +30,7 @@ class CheckpointManager:
     def create_checkpoint(self, 
                          phase: str, 
                          step: str, 
-                         session_state: Any,  # Can be Dict or SessionState
+                         session_state: Dict[str, Any],  # Simple dict following ADK patterns
                          metadata: Dict[str, Any] = None) -> str:
         """Create a new checkpoint with current state."""
         if not config.ENABLE_CHECKPOINTING:
@@ -41,14 +39,18 @@ class CheckpointManager:
         timestamp = datetime.now(timezone.utc).isoformat()
         checkpoint_id = f"{phase}_{step}_{timestamp.replace(':', '-').replace('.', '-')}"
         
-        # Convert SessionState to dict if needed
-        if isinstance(session_state, SessionState):
-            state_dict = session_state.to_checkpoint_dict()
-        elif isinstance(session_state, dict):
-            state_dict = session_state
-        else:
-            # Try to handle proxy objects
-            state_dict = dict(session_state)
+        # Use simple dict state following ADK patterns
+        if not isinstance(session_state, dict):
+            raise ValueError("session_state must be a simple dict following ADK patterns")
+        
+        # Create a clean copy of state with only serializable values
+        state_dict = {}
+        for key, value in session_state.items():
+            # Only store simple, serializable types
+            if isinstance(value, (str, int, float, bool, list, dict, type(None))):
+                state_dict[key] = value
+            else:
+                print(f"⚠️  Skipping non-serializable state key '{key}': {type(value)}")
         
         checkpoint_data = {
             "checkpoint_id": checkpoint_id,
@@ -59,7 +61,7 @@ class CheckpointManager:
             "session_state": state_dict,
             "metadata": metadata or {},
             "agent_execution_count": self.agent_execution_count,
-            "uses_session_state_model": isinstance(session_state, SessionState)
+            "uses_adk_patterns": True  # Mark as using proper ADK patterns
         }
         
         # Save checkpoint
@@ -76,23 +78,19 @@ class CheckpointManager:
         print(f"💾 CHECKPOINT SAVED: {checkpoint_id}")
         if config.VERBOSE_LOGGING:
             print(f"   📁 Path: {checkpoint_path}")
-            if isinstance(session_state, SessionState):
-                print(f"   📊 Using SessionState model")
-            else:
-                print(f"   📊 Session keys: {list(state_dict.keys())}")
+            print(f"   📊 Using ADK patterns - Session keys: {list(state_dict.keys())}")
         
         self.current_checkpoint = checkpoint_id
         return checkpoint_id
     
-    def load_checkpoint(self, checkpoint_id: str = None, return_session_state: bool = False) -> Optional[Any]:
+    def load_checkpoint(self, checkpoint_id: str = None) -> Optional[Dict[str, Any]]:
         """Load a specific checkpoint or the latest one.
         
         Args:
             checkpoint_id: Specific checkpoint to load, or None for latest
-            return_session_state: If True, return SessionState object instead of dict
             
         Returns:
-            Checkpoint data dict, or SessionState if return_session_state=True
+            Checkpoint data dict with simple state following ADK patterns
         """
         if not config.ENABLE_CHECKPOINTING:
             return None
@@ -122,22 +120,14 @@ class CheckpointManager:
             print(f"   🎯 Phase: {checkpoint_data['phase']} → {checkpoint_data['step']}")
             print(f"   🔢 Agent executions: {checkpoint_data['agent_execution_count']}")
             
+            # Check if this uses new ADK patterns or legacy format
+            if checkpoint_data.get('uses_adk_patterns', False):
+                print(f"   ✅ Using proper ADK state patterns")
+            else:
+                print(f"   ⚠️  Legacy checkpoint format - state may need migration")
+            
             self.current_checkpoint = checkpoint_id
             self.agent_execution_count = checkpoint_data['agent_execution_count']
-            
-            # Return SessionState object if requested
-            if return_session_state:
-                if checkpoint_data.get('uses_session_state_model', False):
-                    # Direct conversion from saved SessionState
-                    session_state = SessionState.from_checkpoint_dict(checkpoint_data['session_state'])
-                else:
-                    # Convert legacy dict to SessionState
-                    session_state = StateAdapter.dict_to_session_state(
-                        checkpoint_data['session_state'], 
-                        self.task_id
-                    )
-                print(f"   ✅ Loaded as SessionState model")
-                return session_state
             
             return checkpoint_data
             

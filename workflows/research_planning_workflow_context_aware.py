@@ -43,12 +43,29 @@ class ContextAwareValidationWrapper(BaseAgent):
         print(f"   Detected Context: {context}")
         print(f"   Confidence: {confidence:.2%}")
         
-        # Create validator if not exists
-        if self._validator is None:
-            self._validator = self.validator_factory()
+        # Always create a new validator instance to prevent state leakage across loop iterations
+        self._validator = self.validator_factory()
         
         # Run the validator with context-aware state
         async for event in self._validator.run_async(ctx):
+            yield event
+
+
+class ContextAwareAgentWrapper(BaseAgent):
+    """Generic wrapper to create a fresh agent instance on each run, preventing state leakage."""
+    
+    agent_factory: Callable[[], BaseAgent]
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # No agent is created at init time
+    
+    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+        # Always create a new agent instance on each run to ensure a clean state
+        agent = self.agent_factory()
+        
+        # Run the freshly created agent
+        async for event in agent.run_async(ctx):
             yield event
 
 
@@ -66,11 +83,17 @@ def get_context_aware_research_planning_workflow():
         name="ContextAwareSeniorValidator"
     )
     
+    # Wrap the chief researcher to ensure it's recreated on each loop iteration
+    chief_researcher_wrapper = ContextAwareAgentWrapper(
+        agent_factory=get_chief_researcher_agent,
+        name="ContextAwareChiefResearcher"
+    )
+    
     # Define the refinement sequence
     refinement_sequence = SequentialAgent(
         name="PlanRefinementSequence",
         sub_agents=[
-            get_chief_researcher_agent(),
+            chief_researcher_wrapper,
             junior_validator,
             senior_validator,
             MetaValidatorCheckAgent(name="MetaValidatorCheck"),
@@ -129,11 +152,17 @@ def get_context_aware_orchestrator_workflow():
         name="ContextAwareSeniorValidator"
     )
     
+    # Wrap the orchestrator to ensure it's recreated on each loop iteration
+    orchestrator_wrapper = ContextAwareAgentWrapper(
+        agent_factory=get_orchestrator_agent,
+        name="ContextAwareOrchestrator"
+    )
+    
     # Define the refinement sequence
     refinement_sequence = SequentialAgent(
         name="ManifestRefinementSequence",
         sub_agents=[
-            get_orchestrator_agent(),
+            orchestrator_wrapper,
             junior_validator,
             senior_validator,
             MetaValidatorCheckAgent(name="MetaValidatorCheck"),

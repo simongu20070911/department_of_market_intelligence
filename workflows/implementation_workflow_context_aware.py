@@ -60,11 +60,8 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
 
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         from ..utils.checkpoint_manager import checkpoint_manager
-        from ..utils.state_adapter import StateProxy
         
-        # Get state proxy
-        session_state = getattr(ctx.session, '_typed_state', None)
-        state_proxy = StateProxy(session_state)
+        # Use simple ADK state access patterns
         
         print("\n🎯 CONTEXT-AWARE IMPLEMENTATION WORKFLOW")
         print("="*60)
@@ -73,7 +70,7 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         print("\n📋 Step 1: Orchestrator Planning (Context-Aware)")
         print("-"*40)
         
-        state_proxy['current_task'] = 'generate_implementation_plan'
+        ctx.session.state['current_task'] = 'generate_implementation_plan'
         
         # Create checkpoint
         checkpoint_manager.create_checkpoint(
@@ -87,7 +84,7 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
             yield event
         
         # Re-initialize the state proxy to get the latest state
-        state_proxy = StateProxy(getattr(ctx.session, '_typed_state', None) or ctx.session.state)
+        # Continue with simple state access
         
         # Check if orchestrator planning was successful
         # Directly access the state dictionary, bypassing the proxy which might be stale.
@@ -110,13 +107,13 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         print("\n💻 Step 2: Parallel Coding Tasks")
         print("-"*40)
         
-        state_proxy['current_task'] = 'parallel_coding'
+        ctx.session.state['current_task'] = 'parallel_coding'
         
         # Load manifest to get tasks
-        manifest_path = state_proxy.get('implementation_manifest_artifact')
+        manifest_path = ctx.session.state.get('implementation_manifest_artifact')
         if not manifest_path:
             print("❌ No implementation manifest found!")
-            state_proxy['execution_status'] = 'critical_error'
+            ctx.session.state['execution_status'] = 'critical_error'
             # Need to yield something to make this an async generator
             from google.adk.events import Event
             from google.genai.types import Content, Part
@@ -137,8 +134,8 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         print("\n🧪 Step 3: Experiment Execution")
         print("-"*40)
         
-        state_proxy['current_task'] = 'experiment_execution'
-        state_proxy['current_phase'] = 'execution'
+        ctx.session.state['current_task'] = 'experiment_execution'
+        ctx.session.state['current_phase'] = 'execution'
         
         # Create checkpoint before experiments
         checkpoint_manager.create_checkpoint(
@@ -152,15 +149,15 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
             yield event
         
         # Validate experiment execution with context-aware validation
-        execution_journal = state_proxy.get('execution_log_artifact')
+        execution_journal = ctx.session.state.get('execution_log_artifact')
         if execution_journal:
-            state_proxy['artifact_to_validate'] = execution_journal
-            state_proxy['current_task'] = 'validate_experiment_execution'
+            ctx.session.state['artifact_to_validate'] = execution_journal
+            ctx.session.state['current_task'] = 'validate_experiment_execution'
             
             async for event in self._experiment_validation.run_async(ctx):
                 yield event
             
-            validation_status = state_proxy.get('validation_status', 'unknown')
+            validation_status = ctx.session.state.get('validation_status', 'unknown')
             if validation_status != 'approved':
                 print(f"❌ Experiment execution failed validation: {validation_status}")
                 # May need to re-run experiments
@@ -169,36 +166,36 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         print("\n📊 Step 4: Results Extraction (Context-Aware)")
         print("-"*40)
         
-        state_proxy['current_task'] = 'generate_results_extraction_plan'
-        state_proxy['current_phase'] = 'results_extraction'
+        ctx.session.state['current_task'] = 'generate_results_extraction_plan'
+        ctx.session.state['current_phase'] = 'results_extraction'
         
         # Orchestrator creates results extraction plan
         async for event in self._orchestrator_agent.run_async(ctx):
             yield event
         
         # Validate results extraction plan/code
-        extraction_script = state_proxy.get('results_extraction_script_artifact')
+        extraction_script = ctx.session.state.get('results_extraction_script_artifact')
         if extraction_script:
-            state_proxy['artifact_to_validate'] = extraction_script
-            state_proxy['current_task'] = 'validate_results_extraction'
+            ctx.session.state['artifact_to_validate'] = extraction_script
+            ctx.session.state['current_task'] = 'validate_results_extraction'
             
             async for event in self._results_validation.run_async(ctx):
                 yield event
             
-            validation_status = state_proxy.get('validation_status', 'unknown')
+            validation_status = ctx.session.state.get('validation_status', 'unknown')
             if validation_status != 'approved':
                 print(f"⚠️  Results extraction needs refinement: {validation_status}")
         
         # Execute the results extraction
         print("\n🔄 Executing results extraction...")
-        state_proxy['current_task'] = 'execute_results_extraction'
+        ctx.session.state['current_task'] = 'execute_results_extraction'
         
         # Run experiment executor to execute the extraction script
         async for event in self._experiment_executor.run_async(ctx):
             yield event
         
         # Final checkpoint
-        results_artifact = state_proxy.get('final_results_artifact')
+        results_artifact = ctx.session.state.get('final_results_artifact')
         checkpoint_manager.create_checkpoint(
             phase="implementation",
             step="complete",
@@ -209,7 +206,7 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
             }
         )
         
-        state_proxy['execution_status'] = 'complete'
+        ctx.session.state['execution_status'] = 'complete'
         print("\n✅ Context-Aware Implementation Workflow Complete!")
         print(f"📊 Results: {results_artifact}")
         print("🔍 All phases validated with context-specific criteria")

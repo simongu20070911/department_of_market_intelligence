@@ -84,13 +84,16 @@ def inject_template_variables(template: str, ctx, agent_name: str) -> str:
     from .. import config
     from datetime import datetime
     
-    # Get basic variables from context and config
-    task_id = ctx.state.get("task_id", "research_session")
+    # Ensure ctx.state is a dictionary to prevent attribute errors
+    session_state = ctx.state if isinstance(ctx.state, dict) else {}
+
+    # Get basic variables from context and config, ensuring no None values
+    task_id = session_state.get("task_id") or config.TASK_ID
     outputs_dir = config.get_outputs_dir(task_id)
-    current_task = ctx.state.get("current_task", "research_planning")
+    current_task = session_state.get("current_task") or "research_planning"
     current_date = datetime.now().strftime("%Y-%m-%d")
-    current_year = datetime.now().year
-    validation_version = ctx.state.get("validation_version", 0)
+    current_year = str(datetime.now().year)
+    validation_version = str(session_state.get("validation_version") or 0)
     
     # Get task file path
     task_file_path = f"{config.TASKS_DIR}/{task_id}.md"
@@ -101,15 +104,16 @@ def inject_template_variables(template: str, ctx, agent_name: str) -> str:
         "{agent_name}": agent_name,
         "{outputs_dir}": outputs_dir,
         "{current_task}": current_task,
-        "{current_date}": current_date, 
-        "{current_year}": str(current_year),
+        "{current_date}": current_date,
+        "{current_year}": current_year,
         "{task_id}": task_id,
-        "{validation_version}": str(validation_version),
+        "{validation_version}": validation_version,
         "{task_file_path}": task_file_path,
     }
     
     for placeholder, value in replacements.items():
-        result = result.replace(placeholder, value)
+        # Ensure all values are strings before replacement to avoid TypeError
+        result = result.replace(placeholder, str(value) if value is not None else "")
     
     return result
 

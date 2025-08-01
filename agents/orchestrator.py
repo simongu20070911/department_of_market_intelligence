@@ -12,9 +12,15 @@ def get_orchestrator_agent():
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name="Orchestrator")
     
-    # Create tools based on execution mode
-    from ..utils.tool_factory import create_agent_tools
-    tools = create_agent_tools("Orchestrator")
+    # Use the centralized toolset registry
+    from ..tools.toolset_registry import toolset_registry
+    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
+    
+    # Wrap in list if it's a real MCP toolset, mock tools are already a list
+    if toolset_registry.is_using_real_mcp():
+        tools = [desktop_commander_toolset]
+    else:
+        tools = desktop_commander_toolset
         
     # Create instruction provider for dynamic template variable injection
     def instruction_provider(ctx: ReadonlyContext) -> str:

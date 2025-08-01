@@ -39,9 +39,15 @@ def get_junior_validator_agent():
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name="Junior_Validator")
     
-    # Use centralized tool factory instead of duplicating logic
-    from ..utils.tool_factory import create_agent_tools
-    tools = create_agent_tools("Junior_Validator")
+    # Use the centralized toolset registry
+    from ..tools.toolset_registry import toolset_registry
+    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
+    
+    # Wrap in list if it's a real MCP toolset, mock tools are already a list
+    if toolset_registry.is_using_real_mcp():
+        tools = [desktop_commander_toolset]
+    else:
+        tools = desktop_commander_toolset
         
     def instruction_provider(ctx: ReadonlyContext) -> str:
         context_type = ctx.state.get("validation_context", "research_plan")
@@ -62,9 +68,15 @@ def get_senior_validator_agent():
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name="Senior_Validator")
     
-    # Use centralized tool factory instead of duplicating logic
-    from ..utils.tool_factory import create_agent_tools
-    tools = create_agent_tools("Senior_Validator")
+    # Use the centralized toolset registry
+    from ..tools.toolset_registry import toolset_registry
+    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
+    
+    # Wrap in list if it's a real MCP toolset, mock tools are already a list
+    if toolset_registry.is_using_real_mcp():
+        tools = [desktop_commander_toolset]
+    else:
+        tools = desktop_commander_toolset
         
     def instruction_provider(ctx: ReadonlyContext) -> str:
         context_type = ctx.state.get("validation_context", "research_plan")
@@ -86,9 +98,15 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
         from ..tools.mock_llm_agent import create_mock_llm_agent
         return create_mock_llm_agent(name=f"{validator_type}_{index}")
     
-    # Use centralized tool factory
-    from ..utils.tool_factory import create_agent_tools
-    tools = create_agent_tools(f"{validator_type}_{index}")
+    # Use the centralized toolset registry
+    from ..tools.toolset_registry import toolset_registry
+    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
+    
+    # Wrap in list if it's a real MCP toolset, mock tools are already a list
+    if toolset_registry.is_using_real_mcp():
+        tools = [desktop_commander_toolset]
+    else:
+        tools = desktop_commander_toolset
     
     validator_configs = {
         "research_plan": {
@@ -214,7 +232,7 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
 
     def instruction_provider(ctx: ReadonlyContext) -> str:
         # Use the actual task_id from the session (consistent with root workflow default)
-        task_id = ctx.state.get("task_id", "research_session")
+        task_id = ctx.state.get("task_id", config.TASK_ID)
         outputs_dir = config.get_outputs_dir(task_id)
         return instruction_template.replace("{outputs_dir}", outputs_dir)
 

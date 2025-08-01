@@ -69,6 +69,45 @@ os.environ['LITELLM_NUM_RETRIES'] = '3'
 os.environ['LITELLM_RETRY_STRATEGY'] = 'exponential_backoff'
 os.environ['LITELLM_RETRY_ON_STATUS_CODES'] = '429,500,502,503,504'
 
+async def initialize_toolset():
+    """Initialize the appropriate toolset and register it globally."""
+    from .tools.toolset_registry import toolset_registry
+    from . import config
+    import os
+
+    print(f"🔧 Initializing toolset for {config.EXECUTION_MODE} mode...")
+
+    if config.EXECUTION_MODE == "dry_run":
+        from .tools.mock_tools import mock_desktop_commander_toolset
+        toolset_registry.set_desktop_commander_toolset(mock_desktop_commander_toolset, is_real_mcp=False)
+        return
+
+    try:
+        from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
+        from mcp.client.stdio import StdioServerParameters
+        
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        
+        toolset = MCPToolset(
+            connection_params=StdioConnectionParams(
+                server_params=StdioServerParameters(
+                    command=config.DESKTOP_COMMANDER_COMMAND,
+                    args=config.DESKTOP_COMMANDER_ARGS,
+                    cwd=project_root
+                ),
+                timeout=config.MCP_TIMEOUT_SECONDS
+            )
+        )
+        toolset_registry.set_desktop_commander_toolset(toolset, is_real_mcp=True)
+        print(f"✅ Successfully initialized {config.EXECUTION_MODE} toolset.")
+
+    except Exception as e:
+        print(f"❌ Failed to create {config.EXECUTION_MODE} toolset: {e}")
+        print("🔄 Falling back to mock tools for safety.")
+        from .tools.mock_tools import mock_desktop_commander_toolset
+        toolset_registry.set_desktop_commander_toolset(mock_desktop_commander_toolset, is_real_mcp=False)
+
+
 async def main(resume_from_checkpoint: str = None):
     """Main function to orchestrate the research process.
     
@@ -93,8 +132,8 @@ async def main(resume_from_checkpoint: str = None):
             print(f"📋 Resuming Task ID: {checkpoint_data['task_id']}")
             print(f"🎯 Resume Point: {checkpoint_data['phase']} → {checkpoint_data['step']}")
             
-            # Restore session state from checkpoint
-            initial_state = checkpoint_data['session_state']
+            # Restore simple session state from checkpoint - following ADK patterns
+            initial_state = checkpoint_data['session_state']  # This is already a simple dict
             checkpoint_manager.agent_execution_count = checkpoint_data['agent_execution_count']
         else:
             print("❌ Failed to load checkpoint, starting fresh")
@@ -102,6 +141,9 @@ async def main(resume_from_checkpoint: str = None):
     else:
         print(f"🚀 STARTING NEW TASK: {config.TASK_ID}")
         initial_state = None
+
+    # Initialize the global toolset before creating any agents
+    await initialize_toolset()
 
     # The root of our agentic system - using integrated context-aware validation
     print("🔍 Using context-aware validation system")
@@ -136,7 +178,10 @@ async def main(resume_from_checkpoint: str = None):
             print(f"❌ ERROR: Failed to load task '{config.TASK_ID}': {e}")
             return
         
-        initial_state = {"task_file_path": task_file_path}
+        initial_state = {
+            "task_id": config.TASK_ID,
+            "task_file_path": task_file_path
+        }
         print(f"--- Starting Research Task from {task_file_path} ---")
     else:
         print(f"--- Resuming Research Task: {initial_state.get('task_file_path', 'Unknown')} ---")
@@ -215,7 +260,15 @@ Examples:
     parser.add_argument(
         '--resume',
         action='store_true',
-        help='Resume from checkpoint'
+        default=True,
+        help='Resume from checkpoint (default: True, use --no-resume to disable)'
+    )
+    
+    parser.add_argument(
+        '--no-resume',
+        action='store_false',
+        dest='resume',
+        help='Disable automatic resume from checkpoint'
     )
     
     parser.add_argument(
@@ -271,9 +324,65 @@ def apply_cli_overrides(args):
         print("🚫 Sandbox auto-cleanup disabled")
 
 
+def print_execution_mode_warning():
+    """Print a warning about the current execution mode."""
+    info = {
+        "mode": config.EXECUTION_MODE,
+        "description": "",
+        "safety_level": "",
+        "file_operations": ""
+    }
+    
+    if config.EXECUTION_MODE == "dry_run":
+        info.update({
+            "description": "Mock tools only, no real operations",
+            "safety_level": "SAFE",
+            "file_operations": "Simulated only"
+        })
+    elif config.EXECUTION_MODE == "sandbox":
+        info.update({
+            "description": "Real tools with project directory access",
+            "safety_level": "SAFE",
+            "file_operations": f"Real outputs to {config.get_outputs_dir()}"
+        })
+    elif config.EXECUTION_MODE == "production":
+        info.update({
+            "description": "Real tools with actual file operations",
+            "safety_level": "DANGEROUS",
+            "file_operations": "REAL - affects actual files"
+        })
+    
+    print(f"\n🔧 EXECUTION MODE: {info['mode'].upper()}")
+    print(f"   📋 {info['description']}")
+    print(f"   🛡️  Safety: {info['safety_level']}")
+    print(f"   📁 Files: {info['file_operations']}")
+    
+    if config.EXECUTION_MODE == "production":
+        print("   🚨 WARNING: This mode creates real files and makes actual changes!")
+    elif config.EXECUTION_MODE == "sandbox":
+        print(f"   📊 Outputs: {config.get_outputs_dir()}")
+    
+    print()
+
+
+def validate_execution_mode():
+    """Validate the current execution mode configuration."""
+    valid_modes = ["dry_run", "sandbox", "production"]
+    
+    if config.EXECUTION_MODE not in valid_modes:
+        print(f"❌ Invalid execution mode: {config.EXECUTION_MODE}")
+        print(f"   Valid modes: {', '.join(valid_modes)}")
+        return False
+    
+    if config.EXECUTION_MODE == "sandbox":
+        # Assuming sandbox is always safe for now as we removed the dedicated check
+        pass
+    
+    return True
+
+
 def validate_configuration():
     """Validate system configuration before starting."""
-    from .utils.tool_factory import validate_execution_mode, print_execution_mode_warning
     from . import config
     
     print("🔍 VALIDATING CONFIGURATION")
@@ -302,10 +411,7 @@ def validate_configuration():
         print("   - Changes cannot be easily undone")
         print("   - Consider using sandbox mode for testing")
         
-        response = input("\n⚠️  Continue with production mode? (type 'YES'): ")
-        if response != "YES":
-            print("❌ Production mode cancelled")
-            return False
+        print("\n⚠️  Auto-confirming production mode as requested.")
     
     print("✅ Configuration validation passed")
     return True

@@ -76,7 +76,10 @@ def _create_sandbox_tools(agent_name: str) -> List[Any]:
                         **os.environ,
                         # Add sandbox mode indicators
                         "DOMI_EXECUTION_MODE": "sandbox",
-                        "DOMI_SAFETY_MODE": "true"
+                        "DOMI_SAFETY_MODE": "true",
+                        # Configure Desktop Commander limits for larger files
+                        "DC_FILE_WRITE_LINE_LIMIT": "10000",
+                        "DC_FILE_READ_LINE_LIMIT": "15000"
                     }
                 ),
                 timeout=config.MCP_TIMEOUT_SECONDS
@@ -134,7 +137,15 @@ def _create_production_tools(agent_name: str) -> List[Any]:
                     server_params=StdioServerParameters(
                         command=config.DESKTOP_COMMANDER_COMMAND,
                         args=config.DESKTOP_COMMANDER_ARGS,
-                        cwd=project_root
+                        cwd=project_root,
+                        env={
+                            **os.environ,
+                            # Configure Desktop Commander limits for larger files
+                            "DC_FILE_WRITE_LINE_LIMIT": "10000",
+                            "DC_FILE_READ_LINE_LIMIT": "15000",
+                            # Production mode indicators
+                            "DOMI_EXECUTION_MODE": "production"
+                        }
                     ),
                     timeout=config.MCP_TIMEOUT_SECONDS
                 )
