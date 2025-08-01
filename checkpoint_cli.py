@@ -12,6 +12,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from department_of_market_intelligence import config
 from department_of_market_intelligence.utils.checkpoint_manager import checkpoint_manager
+from department_of_market_intelligence.utils.micro_checkpoint_manager import micro_checkpoint_manager
+from department_of_market_intelligence.utils.operation_tracking import (
+    print_recovery_status,
+    resume_failed_operations
+)
 from department_of_market_intelligence.main import main
 
 

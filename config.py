@@ -51,6 +51,13 @@ TASK_ID = os.getenv("TASK_ID", "sample_research_task")  # Without .md extension
 ENABLE_CHECKPOINTING = os.getenv("ENABLE_CHECKPOINTING", "true").lower() == "true"
 CHECKPOINT_INTERVAL = int(os.getenv("CHECKPOINT_INTERVAL", "1"))  # Save checkpoint after every N agents
 
+# --- Micro-Checkpoint Configuration ---
+ENABLE_MICRO_CHECKPOINTS = os.getenv("ENABLE_MICRO_CHECKPOINTS", "true").lower() == "true"
+MICRO_CHECKPOINT_AUTO_RESUME = os.getenv("MICRO_CHECKPOINT_AUTO_RESUME", "true").lower() == "true"
+MICRO_CHECKPOINT_MAX_RETRIES = int(os.getenv("MICRO_CHECKPOINT_MAX_RETRIES", "3"))
+MICRO_CHECKPOINT_TIMEOUT = int(os.getenv("MICRO_CHECKPOINT_TIMEOUT", "300"))  # 5 minutes default
+MICRO_CHECKPOINT_CLEANUP_DAYS = int(os.getenv("MICRO_CHECKPOINT_CLEANUP_DAYS", "7"))  # Keep 7 days
+
 # --- File Paths ---
 # Use absolute paths to ensure files are created in the correct location
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))

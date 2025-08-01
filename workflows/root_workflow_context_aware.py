@@ -39,6 +39,7 @@ class RootWorkflowAgentContextAware(BaseAgent):
         # Initialize workflows here to ensure they have the correct context
         self._initialize_workflows()
         from ..utils.checkpoint_manager import checkpoint_manager
+        from ..utils.micro_checkpoint_manager import micro_checkpoint_manager
         from datetime import datetime
         
         print("🚀 CONTEXT-AWARE ROOT WORKFLOW: Using simple ADK state management...")
@@ -56,8 +57,24 @@ class RootWorkflowAgentContextAware(BaseAgent):
         if 'current_date' not in ctx.session.state:
             ctx.session.state['current_date'] = datetime.now().strftime("%Y-%m-%d")
         
-        # Initialize checkpoint manager with task ID
+        # Initialize checkpoint managers with task ID
         checkpoint_manager.task_id = task_id
+        micro_checkpoint_manager.task_id = task_id
+        
+        # Initialize micro-checkpoints if enabled
+        if config.ENABLE_MICRO_CHECKPOINTS:
+            print("💾 Micro-checkpoints enabled for fine-grained recovery")
+            
+            # Check for recoverable operations
+            recoverable_ops = micro_checkpoint_manager.list_recoverable_operations()
+            if recoverable_ops:
+                print(f"🔄 Found {len(recoverable_ops)} recoverable micro-operations")
+                for op in recoverable_ops:
+                    print(f"   • {op['operation_id']} ({op['agent_name']}): {op['progress']}")
+                
+                if config.MICRO_CHECKPOINT_AUTO_RESUME:
+                    print("🔄 Auto-resuming micro-operations...")
+                    # Note: Individual agents will handle their own operation resumption
         
         # --- Phase 1: Research Planning ---
         if ctx.session.state.get('current_phase') in [None, "planning"]:
@@ -169,9 +186,24 @@ class RootWorkflowAgentContextAware(BaseAgent):
             session_state=ctx.session.state,
             metadata={
                 "final_report": final_report_path,
-                "workflow_complete": True
+                "workflow_complete": True,
+                "micro_checkpoints_used": config.ENABLE_MICRO_CHECKPOINTS
             }
         )
+        
+        # Cleanup micro-checkpoints if enabled
+        if config.ENABLE_MICRO_CHECKPOINTS:
+            print("🧹 Cleaning up completed micro-operations...")
+            micro_checkpoint_manager.cleanup_completed_operations(
+                keep_days=config.MICRO_CHECKPOINT_CLEANUP_DAYS
+            )
+            
+            # Show final micro-checkpoint summary
+            recoverable_ops = micro_checkpoint_manager.list_recoverable_operations()
+            if recoverable_ops:
+                print(f"⚠️  {len(recoverable_ops)} micro-operations still recoverable")
+            else:
+                print("✅ All micro-operations completed successfully")
         
         print("\n✅ CONTEXT-AWARE RESEARCH WORKFLOW COMPLETE!")
         print(f"📊 Final report: {final_report_path}")

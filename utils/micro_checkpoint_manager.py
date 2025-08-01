@@ -28,6 +28,14 @@ class OperationStep:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     error_info: Optional[Dict[str, Any]] = None
+    
+    def __post_init__(self):
+        """Apply config defaults after initialization."""
+        from .. import config
+        if self.timeout_seconds is None:
+            self.timeout_seconds = config.MICRO_CHECKPOINT_TIMEOUT
+        if self.max_retries == 3:  # Only override if using default
+            self.max_retries = config.MICRO_CHECKPOINT_MAX_RETRIES
 
 
 @dataclass
@@ -73,6 +81,10 @@ class MicroCheckpointManager:
                        steps: List[OperationStep],
                        operation_state: Dict[str, Any] = None) -> str:
         """Start tracking a multi-step operation."""
+        
+        if not config.ENABLE_MICRO_CHECKPOINTS:
+            print("⚠️  Micro-checkpoints disabled in config")
+            return None
         
         progress = OperationProgress(
             operation_id=operation_id,
