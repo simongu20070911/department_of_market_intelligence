@@ -32,6 +32,14 @@ MAX_CODE_REFINEMENT_LOOPS = 3
 MAX_EXECUTION_CORRECTION_LOOPS = 2
 PARALLEL_VALIDATION_SAMPLES = 4
 MAX_ORCHESTRATOR_REFINEMENT_LOOPS = 5  # For implementation manifest refinement
+MAX_IMPLEMENTATION_ATTEMPTS = 3  # Max attempts for implementation phase on critical errors
+
+# --- Implementation Manifest Validation Fallback ---
+# If True, allows workflow to continue when implementation manifest validation fails after max retries
+# If False, workflow will fail with critical_error when validation fails (original behavior)
+IMPLEMENTATION_MANIFEST_VALIDATION_ALLOW_PASS_ON_MAX_RETRIES = os.getenv(
+    "IMPLEMENTATION_MANIFEST_VALIDATION_ALLOW_PASS_ON_MAX_RETRIES", "true"
+).lower() == "true"
 
 # --- Validation Settings ---
 # (No special configuration needed - using integrated context-aware validators)

@@ -3,10 +3,10 @@ import asyncio
 import os
 import json
 from typing import Dict, Any, List, AsyncGenerator
-from google.adk.agents import LlmAgent
-from google.adk.agents.llm_agent import ReadonlyContext
-from google.adk.context import InvocationContext
-from google.adk.agents.api import Event
+from google.adk.agents.llm_agent import LlmAgent
+from google.adk.agents.invocation_context import InvocationContext
+from google.adk.events import Event
+from google.genai import types
 
 from .. import config
 from ..utils.model_loader import get_llm_model
@@ -30,7 +30,7 @@ class MicroCheckpointChiefResearcher(LlmAgent):
             tools=tools
         )
     
-    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+    async def _run_async_impl(self, ctx):
         """Enhanced research planning with fine-grained checkpointing."""
         
         # Check if micro-checkpoints are enabled
@@ -236,13 +236,13 @@ def get_chief_researcher_agent():
         tools = desktop_commander_toolset
     
     # Create instruction provider for dynamic template variable injection
-    def instruction_provider(ctx: "ReadonlyContext") -> str:
+    def instruction_provider(ctx=None) -> str:
         from ..prompts.builder import inject_template_variables
         return inject_template_variables(CHIEF_RESEARCHER_INSTRUCTION, ctx, "Chief_Researcher")
     
-    # Return the micro-checkpoint enabled researcher
+    # Return micro-checkpoint enabled agent
     return MicroCheckpointChiefResearcher(
         model=get_llm_model(config.CHIEF_RESEARCHER_MODEL),
-        tools=tools,
-        instruction_provider=instruction_provider
+        instruction_provider=instruction_provider,
+        tools=tools
     )

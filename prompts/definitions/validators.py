@@ -37,7 +37,7 @@ def build_junior_validator_instruction(context_type: str = None) -> str:
         .add_section(JUNIOR_VALIDATOR_OUTPUT_REQUIREMENTS)
         .add_section("### CRITICAL RESTRICTION ###")
         .add_section(VALIDATOR_RESTRICTIONS)
-        .add_output_format()
+        .add_validator_output_format()
     )
     
     if context_type:
@@ -69,7 +69,7 @@ def build_senior_validator_instruction(context_type: str = None) -> str:
         .add_section(SENIOR_VALIDATOR_DECISION_CRITERIA)
         .add_section("### CRITICAL RESTRICTION ###")
         .add_section(SENIOR_VALIDATOR_RESTRICTIONS)
-        .add_output_format()
+        .add_validator_output_format()
     )
     
     if context_type:

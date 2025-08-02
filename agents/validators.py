@@ -308,12 +308,66 @@ class ParallelFinalValidationAgent(BaseAgent):
         return validators[index % len(validators)]
     
     def _analyze_validation_results(self, ctx: InvocationContext) -> list:
-        """Analyze validation results from all parallel validators."""
-        # Collect issues from state or analyze output files
-        # This is simplified - in reality would parse validator outputs
-        if ctx.session.state.get('validation_status') == 'critical_error':
-            return ctx.session.state.get('consolidated_validation_issues', [])
-        return []
+        """Analyze validation results by parsing critique files for status markers."""
+        
+        # Find latest senior critique file
+        senior_critique_path = self._find_latest_senior_critique(ctx)
+        if not senior_critique_path:
+            return ["No senior critique file found"]
+        
+        # Parse validation status from critique file
+        try:
+            with open(senior_critique_path, 'r') as f:
+                content = f.read()
+            
+            # Look for status marker pattern
+            import re
+            status_match = re.search(r'\*\*FINAL VALIDATION STATUS:\s*(approved|rejected|critical_error)\*\*', content)
+            
+            if status_match:
+                file_status = status_match.group(1)
+                # Update session state to match file status
+                ctx.session.state['validation_status'] = file_status
+                
+                if file_status == 'critical_error':
+                    return ["Critical validation errors found in senior critique"]
+                elif file_status == 'rejected':
+                    return ["Validation rejected - refinement required"]
+                else:  # approved
+                    return []
+            else:
+                # Fallback: no status marker found
+                return ["Senior critique missing status marker"]
+                
+        except Exception as e:
+            return [f"Error parsing senior critique: {str(e)}"]
+    
+    def _find_latest_senior_critique(self, ctx: InvocationContext) -> str:
+        """Find the latest senior critique file."""
+        import os
+        from .. import config
+        
+        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        outputs_dir = config.get_outputs_dir(task_id)
+        critiques_dir = os.path.join(outputs_dir, "planning", "critiques")
+        
+        if not os.path.exists(critiques_dir):
+            return None
+        
+        # Find all senior critique files
+        senior_critiques = []
+        for filename in os.listdir(critiques_dir):
+            if filename.startswith("senior_critique_v") and filename.endswith(".md"):
+                senior_critiques.append(filename)
+        
+        if not senior_critiques:
+            return None
+        
+        # Sort by version number to get latest
+        senior_critiques.sort(key=lambda x: int(x.split('_v')[1].split('.')[0]))
+        latest_critique = senior_critiques[-1]
+        
+        return os.path.join(critiques_dir, latest_critique)
 
 
 # This is not an LLM agent. It's a simple control-flow agent.

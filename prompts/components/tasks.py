@@ -103,7 +103,8 @@ JUNIOR_VALIDATOR_OUTPUT_REQUIREMENTS = """- If you find critical issues, list th
 - For each issue, explain WHY it's critical and its potential impact
 - If no critical issues found, write: "No critical issues found."
 - Use `write_file` to save your critique to `{outputs_dir}/planning/critiques/junior_critique_v{validation_version}.md`
-- Include a section "Key Files Reviewed:" listing important files you examined"""
+- Include a section "Key Files Reviewed:" listing important files you examined
+- END your critique file with: **FINAL VALIDATION STATUS: [approved|rejected|critical_error]**"""
 
 # Senior Validator Specific Tasks
 SENIOR_VALIDATOR_RECURSIVE_LOADING = """You have the ability to recursively load additional context:
@@ -120,10 +121,12 @@ SENIOR_VALIDATOR_SYNTHESIS = """1. Synthesize junior validator findings with you
    - "Recommendations for Improvement"
    - "Key Files Reviewed" (list all files examined)
    
-4. Make final judgment - set `state['validation_status']` to:
-   - 'approved': Work meets all quality standards
-   - 'rejected': Needs refinement but fixable
-   - 'critical_error': Fundamental issues requiring major rework"""
+4. Make final judgment - BOTH:
+   a) END your critique file with: **FINAL VALIDATION STATUS: [approved|rejected|critical_error]**
+   b) Set `state['validation_status']` to the same value:
+      - 'approved': Work meets all quality standards
+      - 'rejected': Needs refinement but fixable
+      - 'critical_error': Fundamental issues requiring major rework"""
 
 SENIOR_VALIDATOR_DECISION_CRITERIA = """- For 'approved': No critical issues, minor improvements optional
 - For 'rejected': Issues that must be fixed but approach is sound

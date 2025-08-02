@@ -138,27 +138,50 @@ class RootWorkflowAgentContextAware(BaseAgent):
         else:
             print("\n📊 SKIPPING PHASE 1: RESEARCH PLANNING (already completed)")
         
-        # --- Phase 2: Implementation ---
-        if ctx.session.state.get('current_phase') == "implementation":
-            print("\n🔧 PHASE 2: IMPLEMENTATION (Context-Aware)")
-            print("="*60)
+        # --- Phase 2: Implementation with Retry Loop ---
+        max_implementation_attempts = config.MAX_IMPLEMENTATION_ATTEMPTS
+        implementation_attempt = 0
+        
+        while ctx.session.state.get('current_phase') == "implementation" and implementation_attempt < max_implementation_attempts:
+            implementation_attempt += 1
+            
+            if implementation_attempt > 1:
+                print(f"\n🔄 PHASE 2: IMPLEMENTATION RETRY (Attempt {implementation_attempt}/{max_implementation_attempts})")
+                print("="*60)
+                print("🔄 Critical error detected - retrying implementation planning")
+                # Reset execution status for retry
+                ctx.session.state['execution_status'] = 'pending'
+                ctx.session.state['validation_status'] = 'pending'
+            else:
+                print("\n🔧 PHASE 2: IMPLEMENTATION (Context-Aware)")
+                print("="*60)
             
             # Run the implementation workflow with context-aware validation
             async for event in self._implementation_workflow.run_async(ctx):
                 yield event
             
-            ctx.session.state['current_phase'] = "final_report" # Transition to next phase
-        else:
+            # Check implementation status
+            execution_status = ctx.session.state.get('execution_status', 'unknown')
+            
+            if execution_status == 'critical_error':
+                if implementation_attempt < max_implementation_attempts:
+                    print(f"❌ Implementation attempt {implementation_attempt} failed - preparing for retry")
+                    # Stay in implementation phase for retry
+                    continue
+                else:
+                    print("❌ Implementation failed after maximum attempts, stopping workflow")
+                    return
+            elif execution_status == 'complete':
+                print("✅ Implementation completed successfully!")
+                ctx.session.state['current_phase'] = "final_report"
+                break
+            else:
+                print(f"⚠️  Implementation ended with status: {execution_status}")
+                ctx.session.state['current_phase'] = "final_report"
+                break
+        
+        if ctx.session.state.get('current_phase') != "implementation":
             print("\n🔧 SKIPPING PHASE 2: IMPLEMENTATION (already completed or not yet started)")
-        
-        # Check implementation status
-        execution_status = ctx.session.state.get('execution_status', 'unknown')
-        
-        if execution_status == 'critical_error':
-            print("❌ Critical error in implementation phase, stopping workflow")
-            return
-        elif execution_status != 'complete':
-            print(f"⚠️  Implementation ended with status: {execution_status}")
         
         # --- Phase 3: Final Report Generation ---
         if ctx.session.state.get('current_phase') == "final_report":

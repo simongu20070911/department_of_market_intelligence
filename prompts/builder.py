@@ -66,6 +66,11 @@ class PromptBuilder:
         from .base import OUTPUT_FORMAT
         return self.add_section(OUTPUT_FORMAT)
     
+    def add_validator_output_format(self) -> 'PromptBuilder':
+        """Add validator-specific output format with status marker."""
+        from .base import VALIDATOR_OUTPUT_FORMAT
+        return self.add_section(VALIDATOR_OUTPUT_FORMAT)
+    
     def build(self) -> str:
         """Build the final prompt."""
         return "\n\n".join(self.sections)

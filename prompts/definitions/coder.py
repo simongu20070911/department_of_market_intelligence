@@ -6,7 +6,7 @@ CODER_INSTRUCTION = (
     PromptBuilder()
     .add_section("### Persona ###")
     .add_section(CODER_PERSONA)
-    .add_communication_protocol()
+    .add_communication_protocol_with_path_validation()
     .add_directory_structure_spec()
     .add_section("### Context & State ###")
     .add_section("""- Your specific task is defined in the state dictionary `state['coder_subtask']`. This is a JSON object containing `task_id`, `description`, `dependencies`, `input_artifacts`, `output_artifacts`, and `success_criteria`.

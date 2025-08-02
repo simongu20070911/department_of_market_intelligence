@@ -17,7 +17,12 @@ class OutputFilter:
             "Loading configuration",
             "Configuration loaded successfully",
             "Connecting server",
-            "Server connected successfully"
+            "Server connected successfully",
+            "stdio_client",
+            "cancel scope",
+            "GeneratorExit",
+            "BaseExceptionGroup",
+            "RuntimeError: Attempted to exit cancel scope"
         ]
     
     def write(self, text):
@@ -43,6 +48,12 @@ import os
 import warnings
 import logging
 import litellm
+
+# Suppress MCP and asyncio cleanup warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*cancel scope.*")
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*stdio_client.*")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="mcp.*")
+warnings.filterwarnings("ignore", category=UserWarning, module="anyio.*")
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.adk.artifacts import InMemoryArtifactService
@@ -98,6 +109,27 @@ async def initialize_toolset():
                 timeout=config.MCP_TIMEOUT_SECONDS
             )
         )
+        
+        # Configure Desktop Commander limits after creating toolset
+        try:
+            # Configure write limit
+            result = toolset.invoke_tool(
+                "mcp__desktop-commander__set_config_value",
+                {"key": "fileWriteLineLimit", "value": 2000}
+            )
+            print(f"✅ Set write limit to 2000: {result.success}")
+            
+            # Configure read limit  
+            result = toolset.invoke_tool(
+                "mcp__desktop-commander__set_config_value", 
+                {"key": "fileReadLineLimit", "value": 7000}
+            )
+            print(f"✅ Set read limit to 7000: {result.success}")
+            
+        except Exception as e:
+            print(f"⚠️  Could not set Desktop Commander limits: {e}")
+            print("   Limits may use default values")
+        
         toolset_registry.set_desktop_commander_toolset(toolset, is_real_mcp=True)
         print(f"✅ Successfully initialized {config.EXECUTION_MODE} toolset.")
 
@@ -196,32 +228,48 @@ async def main(resume_from_checkpoint: str = None):
     # Start the process with an initial message (can be empty)
     start_message = Content(parts=[Part(text="Begin the research process.")])
     
-    async for event in runner.run_async(
-        session_id=session.id,
-        user_id=session.user_id,
-        new_message=start_message
-    ):
-        # You can process and print events here for real-time monitoring
-        if config.STREAMING_ENABLED:
-            if event.content and event.content.parts:
-                for part in event.content.parts:
-                    if part.text:
-                        if event.partial:
-                            # Print partial text on the same line
-                            sys.stdout.write(part.text)
-                            sys.stdout.flush()
-                        else:
-                            # Once the full text is received, print a newline
-                            print(f"\n[{event.author}]: {part.text.strip()}")
-                    if part.function_call:
-                        print(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
+    try:
+        async for event in runner.run_async(
+            session_id=session.id,
+            user_id=session.user_id,
+            new_message=start_message
+        ):
+            # You can process and print events here for real-time monitoring
+            if config.STREAMING_ENABLED:
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if part.text:
+                            if event.partial:
+                                # Print partial text on the same line
+                                sys.stdout.write(part.text)
+                                sys.stdout.flush()
+                            else:
+                                # Once the full text is received, print a newline
+                                print(f"\n[{event.author}]: {part.text.strip()}")
+                        if part.function_call:
+                            print(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
+            else:
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if part.text:
+                            print(f"[{event.author}]: {part.text.strip()}")
+                        if part.function_call:
+                            print(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
+    except (Exception, BaseExceptionGroup) as e:
+        # Handle workflow execution errors and MCP cleanup issues
+        if "stdio_client" in str(e) or "cancel scope" in str(e):
+            print(f"\n⚠️  MCP connection cleanup (non-fatal)")
         else:
-            if event.content and event.content.parts:
-                for part in event.content.parts:
-                    if part.text:
-                        print(f"[{event.author}]: {part.text.strip()}")
-                    if part.function_call:
-                        print(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
+            print(f"\n❌ Workflow execution error: {e}")
+        
+        # Attempt graceful cleanup
+        try:
+            from .tools.toolset_registry import toolset_registry
+            toolset_registry.cleanup()
+        except Exception:
+            pass  # Suppress cleanup errors
+    finally:
+        print("\n🔚 Research task completed.")
 
 def parse_arguments():
     """Parse command line arguments."""

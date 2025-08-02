@@ -76,7 +76,7 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         checkpoint_manager.create_checkpoint(
             phase="implementation",
             step="orchestrator_start",
-            session_state=session_state or ctx.session.state
+            session_state=ctx.session.state
         )
         
         # Run orchestrator with context-aware validation
@@ -89,19 +89,36 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         # Check if orchestrator planning was successful
         # Directly access the state dictionary, bypassing the proxy which might be stale.
         validation_status = ctx.session.state.get('validation_status', 'unknown')
-        if validation_status != 'approved':
-            print(f"❌ Orchestrator planning failed validation: {validation_status}")
-            ctx.session.state['execution_status'] = 'critical_error'
-            # Need to yield something to make this an async generator
-            from google.adk.events import Event
-            from google.genai.types import Content, Part
-            yield Event(
-                author=self.name,
-                content=Content(parts=[Part(text="Implementation workflow failed validation")])
-            )
-            return
+        max_retries_reached = ctx.session.state.get('orchestrator_max_retries_reached', False)
         
-        print("✅ Implementation manifest approved with context-aware validation!")
+        if validation_status != 'approved':
+            # Check if we should use fallback behavior
+            if max_retries_reached and config.IMPLEMENTATION_MANIFEST_VALIDATION_ALLOW_PASS_ON_MAX_RETRIES:
+                print(f"⚠️  Implementation manifest validation failed after max retries: {validation_status}")
+                print(f"🎯 Config toggle enabled: continuing workflow despite validation failure")
+                print(f"📊 Iteration count: {ctx.session.state.get('orchestrator_iteration_count', 'unknown')}")
+                # Set a warning status but allow continuation
+                ctx.session.state['validation_status'] = 'approved_with_fallback'
+            else:
+                print(f"❌ Orchestrator planning failed validation: {validation_status}")
+                if max_retries_reached:
+                    print(f"❌ Max retries reached but fallback is disabled in config")
+                ctx.session.state['execution_status'] = 'critical_error'
+                # Need to yield something to make this an async generator
+                from google.adk.events import Event
+                from google.genai.types import Content, Part
+                yield Event(
+                    author=self.name,
+                    content=Content(parts=[Part(text="Implementation workflow failed validation")])
+                )
+                return
+        
+        # Update success message based on validation status
+        final_validation_status = ctx.session.state.get('validation_status', 'unknown')
+        if final_validation_status == 'approved_with_fallback':
+            print("⚠️  Implementation manifest proceeding with fallback approval (max retries reached)")
+        else:
+            print("✅ Implementation manifest approved with context-aware validation!")
         
         # --- Step 2: Parallel Coding ---
         print("\n💻 Step 2: Parallel Coding Tasks")

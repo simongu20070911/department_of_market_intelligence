@@ -42,9 +42,6 @@ class ToolsetRegistry:
                             cwd=project_root,
                             env={
                                 **os.environ,
-                                # Configure Desktop Commander limits for larger files
-                                "DC_FILE_WRITE_LINE_LIMIT": "10000",
-                                "DC_FILE_READ_LINE_LIMIT": "15000",
                                 # Execution mode indicators
                                 "DOMI_EXECUTION_MODE": config.EXECUTION_MODE
                             }
@@ -52,6 +49,10 @@ class ToolsetRegistry:
                         timeout=config.MCP_TIMEOUT_SECONDS
                     )
                 )
+                
+                # Apply high-throughput configuration to ensure 2000/7000 limits
+                self._configure_high_throughput_limits()
+                
                 self._is_real_mcp = True
                 print(f"🔧 Shared MCP toolset created for {config.EXECUTION_MODE} mode")
                 
@@ -73,6 +74,38 @@ class ToolsetRegistry:
     def is_using_real_mcp(self) -> bool:
         """Check if we're using real MCP toolset."""
         return self._is_real_mcp
+    
+    def _configure_high_throughput_limits(self):
+        """Configure high-throughput limits (2000/7000) for the Desktop Commander instance."""
+        try:
+            from .tool_config import apply_high_throughput_config
+            print("🚀 Configuring high-throughput limits for MCP instance...")
+            success = apply_high_throughput_config()
+            if success:
+                print("✅ High-throughput limits applied to MCP instance")
+            else:
+                print("⚠️  Failed to apply high-throughput limits")
+        except Exception as e:
+            print(f"⚠️  Error configuring limits: {e}")
+            print("   Desktop Commander will use default limits")
+    
+    
+    def cleanup(self):
+        """Clean up MCP resources gracefully."""
+        if self._shared_toolset and self._is_real_mcp:
+            try:
+                # Attempt graceful cleanup
+                print("🧹 Cleaning up MCP resources...")
+                # Note: MCPToolset doesn't have a standard cleanup method
+                # so we'll just clear the reference
+                self._shared_toolset = None
+                print("✅ MCP cleanup completed")
+            except Exception as e:
+                # Suppress cleanup errors to avoid masking the original error
+                print(f"⚠️  MCP cleanup warning (non-fatal): {e}")
+        elif self._shared_toolset:
+            print("🧹 Cleaning up mock toolset...")
+            self._shared_toolset = None
 
 # Global registry instance
 toolset_registry = ToolsetRegistry()

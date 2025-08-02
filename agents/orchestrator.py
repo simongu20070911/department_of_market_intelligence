@@ -5,8 +5,8 @@ import json
 from typing import Dict, Any, List, AsyncGenerator
 from google.adk.agents import LlmAgent
 from google.adk.agents.llm_agent import ReadonlyContext
-from google.adk.context import InvocationContext
-from google.adk.agents.api import Event
+from google.adk.agents.invocation_context import InvocationContext
+from google.adk.events import Event
 
 from .. import config
 from ..utils.callbacks import ensure_end_of_output
