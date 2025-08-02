@@ -8,7 +8,7 @@ load_dotenv() # Load variables from .env file
 # --- Custom Gemini Endpoint Configuration ---
 # If you have a custom base endpoint for the Gemini API, specify it here.
 # If this is None or an empty string, the default endpoint will be used.
-CUSTOM_GEMINI_API_ENDPOINT = os.getenv("CUSTOM_GEMINI_API_ENDPOINT", "http://0.0.0.0:10000")
+CUSTOM_GEMINI_API_ENDPOINT = os.getenv("CUSTOM_GEMINI_API_ENDPOINT", "http://192.168.110.42:10000")
 
 # --- API Format Toggle ---
 USE_OPENAI_FORMAT = os.getenv("USE_OPENAI_FORMAT", "true").lower() == "true"  # Set to true to use OpenAI format, false for Gemini

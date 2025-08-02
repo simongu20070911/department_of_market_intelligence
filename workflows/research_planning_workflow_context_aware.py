@@ -175,45 +175,11 @@ def get_context_aware_orchestrator_workflow():
         max_iterations = min(max_iterations, config.MAX_DRY_RUN_ITERATIONS)
         print(f"DRY RUN MODE: Limiting orchestrator loop to {max_iterations} iterations")
     
-    # Create a custom loop tracking wrapper to monitor when max iterations are reached
-    class IterationTrackingLoopAgent(BaseAgent):
-        """Wrapper around LoopAgent that tracks when max iterations are reached."""
-        
-        def __init__(self, max_iterations: int, **kwargs):
-            self.max_iterations = max_iterations
-            self.loop_agent = LoopAgent(
-                name="OrchestratorPlanningLoop",
-                max_iterations=max_iterations,
-                sub_agents=[refinement_sequence]
-            )
-            super().__init__(**kwargs)
-        
-        async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
-            # Initialize iteration tracking
-            ctx.session.state['orchestrator_iteration_count'] = 0
-            ctx.session.state['orchestrator_max_retries_reached'] = False
-            
-            # Track iterations during execution
-            iteration_count = 0
-            async for event in self.loop_agent.run_async(ctx):
-                # Count iterations by looking for specific agent completions
-                if (event.author and 
-                    event.is_final_response() and 
-                    "MetaValidatorCheck" in event.author):
-                    iteration_count += 1
-                    ctx.session.state['orchestrator_iteration_count'] = iteration_count
-                    
-                    # Check if we've reached max iterations
-                    if iteration_count >= self.max_iterations:
-                        ctx.session.state['orchestrator_max_retries_reached'] = True
-                        print(f"🔄 Orchestrator max iterations reached: {iteration_count}/{self.max_iterations}")
-                
-                yield event
-    
-    # Create the iteration tracking loop
-    orchestrator_loop = IterationTrackingLoopAgent(
+    # Create the main orchestrator loop with standard LoopAgent
+    orchestrator_loop = LoopAgent(
+        name="OrchestratorPlanningLoop",
         max_iterations=max_iterations,
-        name="IterationTrackingOrchestratorLoop"
+        sub_agents=[refinement_sequence]
     )
     
     # Create parallel final validation

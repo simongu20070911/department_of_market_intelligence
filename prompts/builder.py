@@ -4,6 +4,7 @@ The builder only orchestrates - all content lives in component files.
 """
 
 from typing import Dict, List, Optional, Set
+from .. import config
 
 
 class PromptBuilder:
