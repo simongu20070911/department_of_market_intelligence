@@ -13,7 +13,7 @@ from ..components.tasks import (
     JUNIOR_VALIDATOR_CORE_TASK,
     SENIOR_VALIDATOR_CORE_TASK,
     JUNIOR_VALIDATOR_OUTPUT_REQUIREMENTS,
-    SENIOR_VALIDATOR_RECURSIVE_LOADING,
+    SENIOR_VALIDATOR_COMPREHENSIVE_ANALYSIS,
     SENIOR_VALIDATOR_SYNTHESIS,
     SENIOR_VALIDATOR_DECISION_CRITERIA,
     VALIDATOR_RESTRICTIONS,
@@ -61,8 +61,8 @@ def build_senior_validator_instruction(context_type: str = None) -> str:
         .add_section(SENIOR_VALIDATOR_CONTEXT)
         .add_section("### Core Task ###")
         .add_section(SENIOR_VALIDATOR_CORE_TASK)
-        .add_section("### Recursive Context Loading ###")
-        .add_section(SENIOR_VALIDATOR_RECURSIVE_LOADING)
+        .add_section("### Comprehensive Analysis ###")
+        .add_section(SENIOR_VALIDATOR_COMPREHENSIVE_ANALYSIS)
         .add_section("### Synthesis & Judgment ###")
         .add_section(SENIOR_VALIDATOR_SYNTHESIS)
         .add_section("### Decision Criteria ###")

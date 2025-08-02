@@ -5,8 +5,22 @@ Task-specific instructions for agents.
 # Chief Researcher Tasks
 GENERATE_INITIAL_PLAN_TASK = """### Task: 'generate_initial_plan' ###
 If the current task is 'generate_initial_plan':
-1.  Read the research task description from the file path: {task_file_path} using the `read_file` tool.
-2.  Generate a comprehensive, step-by-step research plan. The plan MUST include:
+
+### RESEARCH TASK DESCRIPTION ###
+{task_description}
+
+### EXISTING WORK CONTEXT ###
+{previous_critiques}
+
+{existing_plans}
+
+### ENVIRONMENTAL EXPLORATION ###
+Use your tools to explore the environment and understand:
+- Available data sources in {outputs_dir}/data/ (use `list_directory`)
+- Current workspace structure and any existing scripts
+- External data sources mentioned in the task that need to be acquired
+
+1.  Based on the research task description and existing work context above, generate a comprehensive, step-by-step research plan. The plan MUST include:
     - A clear hypothesis.
     - Detailed data sourcing and hygiene protocols.
     - A list of specific experiments to be conducted, including statistical tests to be used (e.g., t-tests, regression analysis, stationarity tests).
@@ -17,10 +31,21 @@ If the current task is 'generate_initial_plan':
 
 REFINE_PLAN_TASK = """### Task: 'refine_plan' ###
 If the current task is 'refine_plan':
+
+### CURRENT RESEARCH PLAN (Version {plan_version?}) ###
+{research_plan}
+
+### VALIDATION FEEDBACK ###
+{previous_critiques}
+
+### ENVIRONMENTAL REASSESSMENT ###
+Use your tools to check for any new data sources or workspace changes:
+- Check {outputs_dir}/data/ for new datasets
+- Review {outputs_dir}/workspace/ for any prototype implementations
+- Understand current data availability and constraints
+
 1.  The current plan version is: {plan_version?}
-2.  Load the current plan from {plan_artifact_name?} using `read_file`.
-3.  Load the senior validator's critique from {critique_artifact_name?} using `read_file`.
-4.  Meticulously revise the plan to address every point in the critique, enhancing its rigor and clarity. The new plan must be a complete, standalone document.
+2.  Based on the current research plan, validation feedback, and environmental reassessment, meticulously revise the plan to address every point in the critique, enhancing its rigor and clarity. The new plan must be a complete, standalone document.
 5.  Calculate the new version number as current plan_version + 1. Use `write_file` to save the new plan with the incremented version number.
 6.  Update the session state with the new plan artifact name, increment the plan_version by 1, and update artifact_to_validate to point to the new version."""
 
@@ -34,7 +59,24 @@ If the current task is 'generate_final_report':
 # Orchestrator Tasks
 GENERATE_IMPLEMENTATION_PLAN_TASK = """### Task: 'generate_implementation_plan' ###
 If `state['current_task']` is 'generate_implementation_plan':
-1.  Load the final, approved research plan from `state['plan_artifact_name']` using `read_file`.
+
+### RESEARCH PLAN CONTEXT ###
+{research_plan}
+
+### TASK DESCRIPTION ###
+{task_description}
+
+### VALIDATION FEEDBACK ###
+{validation_feedback}
+
+### ENVIRONMENT EXPLORATION ###
+Use your tools to understand the current environment:
+- Check available data sources in {outputs_dir}/data/ (use `list_directory`)
+- Examine workspace structure in {outputs_dir}/workspace/ for existing tools
+- Identify any external data requirements that need acquisition
+- Assess computational resource availability for parallel execution
+
+1.  Based on the research plan context above and environmental assessment:
 2.  CRITICAL: Analyze the plan to identify INDEPENDENT WORK STREAMS that can execute in parallel:
     - Separate data pipelines (market data, alternative data, fundamental data, risk data)
     - Independent feature engineering streams (technical, fundamental, sentiment, micro-structure)
@@ -86,15 +128,31 @@ EXECUTE_EXPERIMENTS_TASK = """### Task ###
     b. Set the session state: `state['execution_status'] = 'success'`."""
 
 # Validator Tasks
-JUNIOR_VALIDATOR_CORE_TASK = """1. Use the `read_file` tool to load the artifact specified in {artifact_to_validate}
-2. Identify the validation context from {validation_context?} to understand what type of artifact you're validating
-3. Apply context-specific validation based on the artifact type:
+JUNIOR_VALIDATOR_CORE_TASK = """### ARTIFACT TO VALIDATE ###
+{artifact_content}
+
+### RELATED RESEARCH PLAN ###
+{research_plan}
+
+1. Review the artifact content provided above (type: {validation_context?})
+2. Apply context-specific validation based on the artifact type:
 
 {context_specific_prompt}"""
 
-SENIOR_VALIDATOR_CORE_TASK = """1. Load and analyze both the primary artifact and junior critique using `read_file`
-2. Identify the validation context to understand what you're validating
-3. Apply deep, context-specific analysis based on the artifact type:
+SENIOR_VALIDATOR_CORE_TASK = """### ARTIFACT TO VALIDATE ###
+{artifact_content}
+
+### JUNIOR VALIDATOR FEEDBACK ###
+{junior_critique}
+
+### ORIGINAL RESEARCH PLAN ###
+{research_plan}
+
+### PREVIOUS SENIOR CRITIQUES ###
+{previous_senior_critiques}
+
+1. Review the artifact content and junior validator feedback provided above
+2. Apply deep, context-specific analysis based on the artifact type ({validation_context?}):
 
 {context_specific_prompt}"""
 
@@ -107,11 +165,11 @@ JUNIOR_VALIDATOR_OUTPUT_REQUIREMENTS = """- If you find critical issues, list th
 - END your critique file with: **FINAL VALIDATION STATUS: [approved|rejected|critical_error]**"""
 
 # Senior Validator Specific Tasks
-SENIOR_VALIDATOR_RECURSIVE_LOADING = """You have the ability to recursively load additional context:
-- Use `list_directory` to explore relevant directories
-- Use `read_file` to examine dependencies, related files, or previous versions
-- Use `search_code` to find implementations or definitions
-- Build a complete understanding of the work in its full context"""
+SENIOR_VALIDATOR_COMPREHENSIVE_ANALYSIS = """You have access to comprehensive context pre-loaded above. Use this context to:
+- Analyze the artifact within its full historical context
+- Consider relationships to previous work and validation feedback
+- Identify patterns and consistency across related artifacts
+- Build a complete understanding of the work's evolution and quality"""
 
 SENIOR_VALIDATOR_SYNTHESIS = """1. Synthesize junior validator findings with your comprehensive analysis
 2. Write detailed critique to `{outputs_dir}/planning/critiques/senior_critique_v{validation_version}.md`

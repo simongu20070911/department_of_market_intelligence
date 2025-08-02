@@ -17,10 +17,10 @@ def get_coder_agent():
     from ..utils.tool_factory import create_agent_tools
     tools = create_agent_tools("Coder_Agent")
     
-    # Create instruction provider for dynamic template variable injection  
+    # Create instruction provider for dynamic template variable injection with context pre-loading
     def instruction_provider(ctx: "ReadonlyContext") -> str:
-        from ..prompts.builder import inject_template_variables
-        return inject_template_variables(CODER_INSTRUCTION, ctx, "Coder_Agent")
+        from ..prompts.builder import inject_template_variables_with_context_preloading
+        return inject_template_variables_with_context_preloading(CODER_INSTRUCTION, ctx, "Coder_Agent")
         
     return LlmAgent(
         model=get_llm_model(config.CODER_MODEL),

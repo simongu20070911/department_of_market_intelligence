@@ -235,10 +235,10 @@ def get_chief_researcher_agent():
     else:
         tools = desktop_commander_toolset
     
-    # Create instruction provider for dynamic template variable injection
+    # Create instruction provider for dynamic template variable injection with context pre-loading
     def instruction_provider(ctx=None) -> str:
-        from ..prompts.builder import inject_template_variables
-        return inject_template_variables(CHIEF_RESEARCHER_INSTRUCTION, ctx, "Chief_Researcher")
+        from ..prompts.builder import inject_template_variables_with_context_preloading
+        return inject_template_variables_with_context_preloading(CHIEF_RESEARCHER_INSTRUCTION, ctx, "Chief_Researcher")
     
     # Return micro-checkpoint enabled agent
     return MicroCheckpointChiefResearcher(

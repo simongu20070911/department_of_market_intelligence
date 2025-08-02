@@ -41,6 +41,11 @@ IMPLEMENTATION_MANIFEST_VALIDATION_ALLOW_PASS_ON_MAX_RETRIES = os.getenv(
     "IMPLEMENTATION_MANIFEST_VALIDATION_ALLOW_PASS_ON_MAX_RETRIES", "true"
 ).lower() == "true"
 
+# --- Context Pre-Loading System ---
+# If True, automatically pre-loads required files for each agent type to eliminate manual file discovery
+# If False, agents use traditional tool-based file reading (slower but more explicit)
+ENABLE_CONTEXT_PRELOADING = os.getenv("ENABLE_CONTEXT_PRELOADING", "true").lower() == "true"
+
 # --- Validation Settings ---
 # (No special configuration needed - using integrated context-aware validators)
 

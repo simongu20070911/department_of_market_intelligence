@@ -50,8 +50,10 @@ def get_junior_validator_agent():
         tools = desktop_commander_toolset
         
     def instruction_provider(ctx: ReadonlyContext) -> str:
+        from ..prompts.builder import inject_template_variables_with_context_preloading
         context_type = ctx.state.get("validation_context", "research_plan")
-        return JUNIOR_VALIDATOR_INSTRUCTIONS.get(context_type, JUNIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
+        base_instruction = JUNIOR_VALIDATOR_INSTRUCTIONS.get(context_type, JUNIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
+        return inject_template_variables_with_context_preloading(base_instruction, ctx, "Junior_Validator")
 
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
@@ -79,8 +81,10 @@ def get_senior_validator_agent():
         tools = desktop_commander_toolset
         
     def instruction_provider(ctx: ReadonlyContext) -> str:
+        from ..prompts.builder import inject_template_variables_with_context_preloading
         context_type = ctx.state.get("validation_context", "research_plan")
-        return SENIOR_VALIDATOR_INSTRUCTIONS.get(context_type, SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
+        base_instruction = SENIOR_VALIDATOR_INSTRUCTIONS.get(context_type, SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
+        return inject_template_variables_with_context_preloading(base_instruction, ctx, "Senior_Validator")
 
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),

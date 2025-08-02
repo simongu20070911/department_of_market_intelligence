@@ -123,6 +123,55 @@ def inject_template_variables(template: str, ctx, agent_name: str) -> str:
     return result
 
 
+def inject_preloaded_context_variables(template: str, ctx, agent_name: str) -> str:
+    """
+    Enhanced template injection that includes pre-loaded context files.
+    This eliminates the need for agents to manually discover and read files.
+    """
+    # First apply basic template variables
+    result = inject_template_variables(template, ctx, agent_name)
+    
+    # Get session state safely
+    session_state = ctx.state if isinstance(ctx.state, dict) else {}
+    
+    # Check if context pre-loading is enabled
+    if not config.ENABLE_CONTEXT_PRELOADING:
+        return result
+    
+    # Get pre-loaded context from session state
+    preloaded_context = session_state.get('preloaded_context', {})
+    
+    if not preloaded_context:
+        # Try to load context for this agent if not already loaded
+        from ..utils.agent_context_preloader import preload_context_for_agent
+        
+        try:
+            preloaded_context = preload_context_for_agent(agent_name, session_state)
+            # Store in session state for future use
+            session_state['preloaded_context'] = preloaded_context
+        except Exception as e:
+            print(f"⚠️  Failed to pre-load context for {agent_name}: {e}")
+            return result
+    
+    # Inject each pre-loaded content as template variables
+    for template_var, content in preloaded_context.items():
+        placeholder = f"{{{template_var}}}"
+        if placeholder in result and content:
+            # Add section headers for better readability
+            formatted_content = f"```\n{content}\n```" if content else "(No content available)"
+            result = result.replace(placeholder, formatted_content)
+    
+    return result
+
+
+def inject_template_variables_with_context_preloading(template: str, ctx, agent_name: str) -> str:
+    """
+    Complete template injection with context pre-loading support.
+    Use this as the main injection function for agents that support context pre-loading.
+    """
+    return inject_preloaded_context_variables(template, ctx, agent_name)
+
+
 class ContextAwarePromptBuilder(PromptBuilder):
     """Extended builder with context-aware features."""
     

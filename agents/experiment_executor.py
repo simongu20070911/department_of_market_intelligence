@@ -269,10 +269,10 @@ def get_experiment_executor_agent():
     else:
         tools = desktop_commander_toolset
     
-    # Create instruction provider for dynamic template variable injection
+    # Create instruction provider for dynamic template variable injection with context pre-loading
     def instruction_provider(ctx: "ReadonlyContext") -> str:
-        from ..prompts.builder import inject_template_variables
-        return inject_template_variables(EXPERIMENT_EXECUTOR_INSTRUCTION, ctx, "Experiment_Executor")
+        from ..prompts.builder import inject_template_variables_with_context_preloading
+        return inject_template_variables_with_context_preloading(EXPERIMENT_EXECUTOR_INSTRUCTION, ctx, "Experiment_Executor")
     
     # Return the micro-checkpoint enabled executor
     return MicroCheckpointExperimentExecutor(
