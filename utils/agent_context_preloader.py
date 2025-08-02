@@ -41,7 +41,7 @@ class AgentContextPreloader:
         "Orchestrator": {
             "research_plan": "auto_load:{plan_artifact_name}",
             "task_description": "auto_load:{task_file_path}",
-            "validation_feedback": "auto_load_latest:{outputs_dir}/planning/critiques/*_critique_v*.md"
+            # Note: validation_feedback removed to prevent confusion with stale critiques from other phases
         },
         
         # Experiment Executor: Fully pre-loaded (execution-focused)

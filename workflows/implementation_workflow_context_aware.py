@@ -1,6 +1,7 @@
 # /department_of_market_intelligence/workflows/implementation_workflow_context_aware.py
 """Context-aware implementation workflow with intelligent validation."""
 
+import os
 from typing import AsyncGenerator
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
@@ -72,6 +73,27 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         
         ctx.session.state['current_task'] = 'generate_implementation_plan'
         
+        # Pre-set the expected artifact paths for validation
+        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        outputs_dir = config.get_outputs_dir(task_id)
+        
+        # Set the implementation manifest path that will be created
+        implementation_manifest_path = f"{outputs_dir}/planning/implementation_manifest.json"
+        ctx.session.state['implementation_manifest_artifact'] = implementation_manifest_path
+        ctx.session.state['artifact_to_validate'] = implementation_manifest_path
+        ctx.session.state['validation_context'] = 'implementation_manifest'
+        
+        # Set the research plan path for validators to reference
+        # Look for the latest research plan version
+        import glob
+        plan_files = glob.glob(f"{outputs_dir}/planning/research_plan_v*.md")
+        if plan_files:
+            latest_plan = max(plan_files, key=lambda x: int(x.split('_v')[-1].split('.')[0]))
+            ctx.session.state['plan_artifact_name'] = latest_plan
+            print(f"📄 Found research plan: {latest_plan}")
+        
+        print(f"🎯 Pre-set validation targets: manifest={implementation_manifest_path}")
+        
         # Create checkpoint
         checkpoint_manager.create_checkpoint(
             phase="implementation",
@@ -82,6 +104,19 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         # Run orchestrator with context-aware validation
         async for event in self._orchestrator_workflow.run_async(ctx):
             yield event
+        
+        # Verify the manifest was actually created
+        implementation_manifest_path = ctx.session.state.get('implementation_manifest_artifact')
+        if not os.path.exists(implementation_manifest_path):
+            print(f"❌ Implementation manifest not created at expected path: {implementation_manifest_path}")
+            ctx.session.state['execution_status'] = 'critical_error'
+            from google.adk.events import Event
+            from google.genai.types import Content, Part
+            yield Event(
+                author=self.name,
+                content=Content(parts=[Part(text="Implementation manifest creation failed")])
+            )
+            return
         
         # Re-initialize the state proxy to get the latest state
         # Continue with simple state access
@@ -158,7 +193,7 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         checkpoint_manager.create_checkpoint(
             phase="execution",
             step="start",
-            session_state=session_state or ctx.session.state
+            session_state=ctx.session.state
         )
         
         # Run experiment executor
@@ -216,7 +251,7 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         checkpoint_manager.create_checkpoint(
             phase="implementation",
             step="complete",
-            session_state=session_state or ctx.session.state,
+            session_state=ctx.session.state,
             metadata={
                 "results": results_artifact,
                 "implementation_complete": True
