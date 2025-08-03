@@ -17,13 +17,22 @@ USE_OPENAI_FORMAT = os.getenv("USE_OPENAI_FORMAT", "true").lower() == "true"  # 
 # For custom endpoints that expect a specific key format
 CUSTOM_API_KEY = os.getenv("CUSTOM_API_KEY", "sk-7m-daily-token-x")
 
-
+"""
 # --- Model Configurations ---
 CHIEF_RESEARCHER_MODEL = "gemini-2.5-pro"
 ORCHESTRATOR_MODEL = "gemini-2.5-pro"
 VALIDATOR_MODEL = "gemini-2.5-pro"
 CODER_MODEL = "gemini-2.5-pro"
 EXECUTOR_MODEL = "gemini-2.5-pro"
+"""
+
+# --- Model Configurations ---
+CHIEF_RESEARCHER_MODEL = "gemini-2.5-flash"
+ORCHESTRATOR_MODEL = "gemini-2.5-flash"
+VALIDATOR_MODEL = "gemini-2.5-flash"
+CODER_MODEL = "gemini-2.5-flash"
+EXECUTOR_MODEL = "gemini-2.5-flash"
+
 
 # --- Workflow Control ---
 MAX_PLAN_REFINEMENT_LOOPS = 5
@@ -59,7 +68,7 @@ END_OF_OUTPUT_MARKER = "<end of output>"
 
 # --- Task Management ---
 # The task identifier to research. Corresponds to a file in the /tasks directory.
-TASK_ID = os.getenv("TASK_ID", "bitcoin")  # Without .md extension
+TASK_ID = os.getenv("TASK_ID", "sample_research_task")  # Without .md extension
 ENABLE_CHECKPOINTING = os.getenv("ENABLE_CHECKPOINTING", "true").lower() == "true"
 CHECKPOINT_INTERVAL = int(os.getenv("CHECKPOINT_INTERVAL", "1"))  # Save checkpoint after every N agents
 

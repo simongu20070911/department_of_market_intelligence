@@ -68,95 +68,112 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         print("="*60)
         
         # --- Step 1: Orchestrator Planning ---
-        print("\n📋 Step 1: Orchestrator Planning (Context-Aware)")
-        print("-"*40)
-        
-        ctx.session.state['current_task'] = 'generate_implementation_plan'
-        
-        # Set task context for validation detection
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
-        outputs_dir = config.get_outputs_dir(task_id)
-        
-        # Set the research plan path for validators to reference
-        # Look for the latest research plan version
-        import glob
-        plan_files = glob.glob(f"{outputs_dir}/planning/research_plan_v*.md")
-        if plan_files:
-            latest_plan = max(plan_files, key=lambda x: int(x.split('_v')[-1].split('.')[0]))
-            ctx.session.state['plan_artifact_name'] = latest_plan
-            print(f"📄 Found research plan: {latest_plan}")
-        else:
-            print("⚠️  No research plan found - validators may have limited context")
-        
-        # Ensure basic session state is populated for nested workflows
-        ctx.session.state['task_id'] = task_id
-        ctx.session.state['outputs_dir'] = outputs_dir
-        ctx.session.state['current_phase'] = 'implementation'
-        print(f"🔧 Session state populated: task_id={task_id}, outputs_dir={outputs_dir}")
-        
-        # Don't pre-set artifact_to_validate - let orchestrator set it after creating the file
-        # The validation context will be detected based on current_task
-        
-        # Create checkpoint
-        checkpoint_manager.create_checkpoint(
-            phase="implementation",
-            step="orchestrator_start",
-            session_state=ctx.session.state
-        )
-        
-        # Run orchestrator with context-aware validation
-        async for event in self._orchestrator_workflow.run_async(ctx):
-            yield event
-        
-        # Verify the manifest was actually created
         implementation_manifest_path = ctx.session.state.get('implementation_manifest_artifact')
-        if not os.path.exists(implementation_manifest_path):
-            print(f"❌ Implementation manifest not created at expected path: {implementation_manifest_path}")
-            ctx.session.state['execution_status'] = 'critical_error'
-            from google.adk.events import Event
-            from google.genai.types import Content, Part
-            yield Event(
-                author=self.name,
-                content=Content(parts=[Part(text="Implementation manifest creation failed")])
-            )
-            return
-        
-        # Re-initialize the state proxy to get the latest state
-        # Continue with simple state access
-        
-        # Check if orchestrator planning was successful
-        # Directly access the state dictionary, bypassing the proxy which might be stale.
-        validation_status = ctx.session.state.get('validation_status', 'unknown')
-        max_retries_reached = ctx.session.state.get('orchestrator_max_retries_reached', False)
-        
-        if validation_status != 'approved':
-            # Check if we should use fallback behavior
-            if max_retries_reached and config.IMPLEMENTATION_MANIFEST_VALIDATION_ALLOW_PASS_ON_MAX_RETRIES:
-                print(f"⚠️  Implementation manifest validation failed after max retries: {validation_status}")
-                print(f"🎯 Config toggle enabled: continuing workflow despite validation failure")
-                print(f"📊 Iteration count: {ctx.session.state.get('orchestrator_iteration_count', 'unknown')}")
-                # Set a warning status but allow continuation
-                ctx.session.state['validation_status'] = 'approved_with_fallback'
+        # Check if an approved manifest already exists from a previous (or resumed) run
+        if implementation_manifest_path and os.path.exists(implementation_manifest_path) and ctx.session.state.get('validation_status') == 'approved':
+            print(f"✅ Found approved implementation manifest from previous run: {os.path.basename(implementation_manifest_path)}")
+            print("📋 Skipping orchestrator planning.")
+            # Ensure the manifest path is correctly set for the next step
+            ctx.session.state['artifact_to_validate'] = implementation_manifest_path
+        else:
+            print("\n📋 Step 1: Orchestrator Planning (Context-Aware)")
+            print("-"*40)
+            
+            ctx.session.state['current_task'] = 'generate_implementation_plan'
+            
+            # Set task context for validation detection
+            task_id = ctx.session.state.get('task_id', config.TASK_ID)
+            outputs_dir = config.get_outputs_dir(task_id)
+            
+            # Set the research plan path for validators to reference
+            # Look for the latest research plan version
+            import glob
+            plan_files = glob.glob(f"{outputs_dir}/planning/research_plan_v*.md")
+            if plan_files:
+                latest_plan = max(plan_files, key=lambda x: int(x.split('_v')[-1].split('.')[0]))
+                ctx.session.state['plan_artifact_name'] = latest_plan
+                print(f"📄 Found research plan: {latest_plan}")
             else:
-                print(f"❌ Orchestrator planning failed validation: {validation_status}")
-                if max_retries_reached:
-                    print(f"❌ Max retries reached but fallback is disabled in config")
+                print("⚠️  No research plan found - validators may have limited context")
+            
+            # Ensure basic session state is populated for nested workflows
+            ctx.session.state['task_id'] = task_id
+            ctx.session.state['outputs_dir'] = outputs_dir
+            ctx.session.state['current_phase'] = 'implementation'
+            print(f"🔧 Session state populated: task_id={task_id}, outputs_dir={outputs_dir}")
+            
+            # Don't pre-set artifact_to_validate - let orchestrator set it after creating the file
+            # The validation context will be detected based on current_task
+            
+            # Create checkpoint
+            checkpoint_manager.create_checkpoint(
+                phase="implementation",
+                step="orchestrator_start",
+                session_state=ctx.session.state
+            )
+            
+            # Run orchestrator with context-aware validation
+            async for event in self._orchestrator_workflow.run_async(ctx):
+                yield event
+            
+            # Verify the manifest was actually created
+            implementation_manifest_path = ctx.session.state.get('implementation_manifest_artifact')
+            if not implementation_manifest_path or not os.path.exists(implementation_manifest_path):
+                print(f"❌ Implementation manifest not created at expected path: {implementation_manifest_path}")
                 ctx.session.state['execution_status'] = 'critical_error'
-                # Need to yield something to make this an async generator
                 from google.adk.events import Event
                 from google.genai.types import Content, Part
                 yield Event(
                     author=self.name,
-                    content=Content(parts=[Part(text="Implementation workflow failed validation")])
+                    content=Content(parts=[Part(text="Implementation manifest creation failed")])
                 )
                 return
+            
+            # Re-initialize the state proxy to get the latest state
+            # Continue with simple state access
+            
+            # Check if orchestrator planning was successful
+            # Directly access the state dictionary, bypassing the proxy which might be stale.
+            validation_status = ctx.session.state.get('validation_status', 'unknown')
+            max_retries_reached = ctx.session.state.get('orchestrator_max_retries_reached', False)
+            
+            if validation_status != 'approved':
+                # Check if we should use fallback behavior
+                if max_retries_reached and config.IMPLEMENTATION_MANIFEST_VALIDATION_ALLOW_PASS_ON_MAX_RETRIES:
+                    print(f"⚠️  Implementation manifest validation failed after max retries: {validation_status}")
+                    print(f"🎯 Config toggle enabled: continuing workflow despite validation failure")
+                    print(f"📊 Iteration count: {ctx.session.state.get('orchestrator_iteration_count', 'unknown')}")
+                    # Set a warning status but allow continuation
+                    ctx.session.state['validation_status'] = 'approved_with_fallback'
+                else:
+                    print(f"❌ Orchestrator planning failed validation: {validation_status}")
+                    if max_retries_reached:
+                        print(f"❌ Max retries reached but fallback is disabled in config")
+                    ctx.session.state['execution_status'] = 'critical_error'
+                    # Need to yield something to make this an async generator
+                    from google.adk.events import Event
+                    from google.genai.types import Content, Part
+                    yield Event(
+                        author=self.name,
+                        content=Content(parts=[Part(text="Implementation workflow failed validation")])
+                    )
+                    return
+            
+            # Update success message based on validation status
+            final_validation_status = ctx.session.state.get('validation_status', 'unknown')
+            if final_validation_status == 'approved_with_fallback':
+                print("⚠️  Implementation manifest proceeding with fallback approval (max retries reached)")
+            else:
+                print("✅ Implementation manifest approved with context-aware validation!")
         
-        # Update success message based on validation status
-        final_validation_status = ctx.session.state.get('validation_status', 'unknown')
-        if final_validation_status == 'approved_with_fallback':
-            print("⚠️  Implementation manifest proceeding with fallback approval (max retries reached)")
-        else:
-            print("✅ Implementation manifest approved with context-aware validation!")
+        # Create a checkpoint after the orchestrator has successfully planned and been validated.
+        # This prevents re-running the orchestrator if the workflow is interrupted later.
+        checkpoint_manager.create_checkpoint(
+            phase="implementation",
+            step="orchestrator_complete",
+            session_state=ctx.session.state,
+            metadata={"manifest_path": ctx.session.state.get('implementation_manifest_artifact')}
+        )
         
         # --- Step 2: Parallel Coding ---
         print("\n💻 Step 2: Parallel Coding Tasks")

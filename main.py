@@ -111,24 +111,9 @@ async def initialize_toolset():
         )
         
         # Configure Desktop Commander limits after creating toolset
-        try:
-            # Configure write limit
-            result = toolset.invoke_tool(
-                "mcp__desktop-commander__set_config_value",
-                {"key": "fileWriteLineLimit", "value": 2000}
-            )
-            print(f"✅ Set write limit to 2000: {result.success}")
-            
-            # Configure read limit  
-            result = toolset.invoke_tool(
-                "mcp__desktop-commander__set_config_value", 
-                {"key": "fileReadLineLimit", "value": 7000}
-            )
-            print(f"✅ Set read limit to 7000: {result.success}")
-            
-        except Exception as e:
-            print(f"⚠️  Could not set Desktop Commander limits: {e}")
-            print("   Limits may use default values")
+        # This is now handled by the tool's persistent configuration
+        # and does not need to be set on every run.
+        # The erroneous invoke_tool call is removed to prevent crashes.
         
         toolset_registry.set_desktop_commander_toolset(toolset, is_real_mcp=True)
         print(f"✅ Successfully initialized {config.EXECUTION_MODE} toolset.")

@@ -2,7 +2,9 @@
 """Context-aware validators that adapt their prompts based on what they're validating."""
 
 import asyncio
-from typing import AsyncGenerator, Dict, Any
+import os
+import re
+from typing import AsyncGenerator, Dict, Any, Optional
 from google.adk.agents import LlmAgent, BaseAgent, ParallelAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
@@ -374,11 +376,80 @@ class ParallelFinalValidationAgent(BaseAgent):
         return os.path.join(critiques_dir, latest_critique)
 
 
+def _find_latest_critique(ctx: InvocationContext, validator_role: str) -> Optional[str]:
+    """Finds the latest critique file for a given validator role."""
+    import os
+    from .. import config
+    
+    task_id = ctx.session.state.get('task_id', config.TASK_ID)
+    outputs_dir = config.get_outputs_dir(task_id)
+    # This is a simplification; a more robust solution would check the current validation context
+    critiques_dir = os.path.join(outputs_dir, "planning", "critiques")
+
+    if not os.path.isdir(critiques_dir):
+        return None
+
+    critique_files = []
+    for f in os.listdir(critiques_dir):
+        if f.startswith(f"{validator_role}_critique_v") and f.endswith(".md"):
+            critique_files.append(os.path.join(critiques_dir, f))
+
+    if not critique_files:
+        return None
+
+    # Find the one with the highest version number from the filename
+    def get_version(filepath):
+        filename = os.path.basename(filepath)
+        try:
+            # Extracts version number like '2' from 'senior_critique_v2.md'
+            return int(re.search(r'_v(\d+)\.md', filename).group(1))
+        except (AttributeError, IndexError, ValueError):
+            return -1
+
+    latest_critique = max(critique_files, key=get_version)
+    return latest_critique
+
+async def _parse_status_from_critique(critique_path: str) -> Optional[str]:
+    """Parses the validation status from a critique file."""
+    if not critique_path or not os.path.exists(critique_path):
+        return None
+    
+    try:
+        with open(critique_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        status_match = re.search(r'\*\*FINAL VALIDATION STATUS:\s*(approved|rejected|critical_error)\*\*', content, re.IGNORECASE)
+        
+        if status_match:
+            return status_match.group(1).lower()
+    except Exception as e:
+        print(f"Error parsing critique file {critique_path}: {e}")
+    return None
+
+
 # This is not an LLM agent. It's a simple control-flow agent.
 class MetaValidatorCheckAgent(BaseAgent):
     """Checks the state for 'validation_status' and escalates based on the status."""
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
-        status = ctx.session.state.get("validation_status", "rejected")
+        status = ctx.session.state.get("validation_status")
+
+        # If status is not set (i.e., not a dry run), parse it from the senior validator's output file.
+        if status is None or status == "pending":
+            latest_senior_critique = _find_latest_critique(ctx, "senior")
+            if latest_senior_critique:
+                print(f"META VALIDATOR: Reading status from {os.path.basename(latest_senior_critique)}")
+                parsed_status = await _parse_status_from_critique(latest_senior_critique)
+                if parsed_status:
+                    status = parsed_status
+                    ctx.session.state["validation_status"] = status
+                    print(f"META VALIDATOR: Parsed status '{status}' from critique.")
+                else:
+                    print("META VALIDATOR: Could not parse status from critique, assuming 'rejected' to continue loop.")
+                    status = "rejected"
+            else:
+                # This can happen on the very first run before any critique is written.
+                print("META VALIDATOR: No senior critique file found, assuming 'rejected' to continue loop.")
+                status = "rejected"
         
         if status == "approved":
             print(f"META VALIDATOR: Status '{status}' - proceeding to next phase")

@@ -132,8 +132,13 @@ def inject_preloaded_context_variables(template: str, ctx, agent_name: str) -> s
     # First apply basic template variables
     result = inject_template_variables(template, ctx, agent_name)
     
-    # Get session state safely
-    session_state = ctx.state if isinstance(ctx.state, dict) else {}
+    # Get session state safely, handling the StateProxy object
+    session_state_proxy = ctx.state
+    if hasattr(session_state_proxy, 'keys'):
+        # Convert proxy to a real dict for functions that expect a dict
+        session_state = {k: session_state_proxy.get(k) for k in session_state_proxy.keys()}
+    else:
+        session_state = {}
     
     # Check if context pre-loading is enabled
     if not config.ENABLE_CONTEXT_PRELOADING:

@@ -14,6 +14,7 @@ Then EXPLICITLY mention (with PATH VALIDATION):
 - 💾 Writing to: [VALIDATE and list specific file paths that follow directory structure]
 - 🎯 Current task: {current_task}
 - read write limit of underlying MCP desktop comamnder tool is <x>, <y> lines which you'd query on and find out. 
+
 - Prioritize using a single batch to write into a file with the MCP stool
 
 ### PATH VALIDATION REQUIREMENTS - CRITICAL ###

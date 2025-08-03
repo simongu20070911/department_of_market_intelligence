@@ -127,6 +127,8 @@ class RootWorkflowAgentContextAware(BaseAgent):
             
             # Transition to next phase BEFORE creating checkpoint
             ctx.session.state['current_phase'] = "implementation"
+            # Reset validation status for the next phase to avoid using stale state
+            ctx.session.state['validation_status'] = "pending"
             
             # Create checkpoint after planning (with updated phase)
             checkpoint_manager.create_checkpoint(
@@ -174,6 +176,8 @@ class RootWorkflowAgentContextAware(BaseAgent):
             elif execution_status == 'complete':
                 print("✅ Implementation completed successfully!")
                 ctx.session.state['current_phase'] = "final_report"
+                # Reset validation status for the final report phase
+                ctx.session.state['validation_status'] = "pending"
                 break
             else:
                 print(f"⚠️  Implementation ended with status: {execution_status}")
