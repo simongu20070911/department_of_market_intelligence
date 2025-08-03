@@ -26,8 +26,7 @@ Use your tools to explore the environment and understand:
     - A list of specific experiments to be conducted, including statistical tests to be used (e.g., t-tests, regression analysis, stationarity tests).
     - A list of required outputs, charts, and metrics needed to validate the hypothesis.
     - Proactively identify and include experiments for any potentially interesting secondary relationships observed in the problem description.
-3.  Use the `write_file` tool to save this plan to a new file. The full path MUST be `{outputs_dir}/planning/research_plan_v0.md`.
-4.  Update the session state: `state['plan_artifact_name'] = 'outputs/{task_id}/planning/research_plan_v0.md'`, `state['plan_version'] = 0`, and `state['artifact_to_validate'] = '{outputs_dir}/planning/research_plan_v0.md'`."""
+2.  Use the `write_file` tool to save this plan to a new file. The full path MUST be `{outputs_dir}/planning/research_plan_v0.md`."""
 
 REFINE_PLAN_TASK = """### Task: 'refine_plan' ###
 If the current task is 'refine_plan':
@@ -46,8 +45,7 @@ Use your tools to check for any new data sources or workspace changes:
 
 1.  The current plan version is: {plan_version?}
 2.  Based on the current research plan, validation feedback, and environmental reassessment, meticulously revise the plan to address every point in the critique, enhancing its rigor and clarity. The new plan must be a complete, standalone document.
-5.  Calculate the new version number as current plan_version + 1. Use `write_file` to save the new plan with the incremented version number.
-6.  Update the session state with the new plan artifact name, increment the plan_version by 1, and update artifact_to_validate to point to the new version."""
+3.  Use `write_file` to save the new plan to `{outputs_dir}/planning/research_plan_v{plan_version?}.md`."""
 
 GENERATE_FINAL_REPORT_TASK = """### Task: 'generate_final_report' ###
 If the current task is 'generate_final_report':
@@ -98,8 +96,7 @@ Use your tools to understand the current environment:
     - `can_fail_independently`: Boolean - if True, failure doesn't block parallel tasks
     
 4.  Assemble task objects into JSON array, ensuring `parallel_group` assignments maximize concurrency.
-5.  Use `write_file` to save to `{outputs_dir}/planning/implementation_manifest.json`.
-6.  Update session state: `state['implementation_manifest_artifact'] = 'outputs/{task_id}/planning/implementation_manifest.json'`."""
+5.  Use `write_file` to save to `{outputs_dir}/planning/implementation_manifest.json`."""
 
 GENERATE_RESULTS_EXTRACTION_PLAN_TASK = """### Task: 'generate_results_extraction_plan' ###
 If `state['current_task']` is 'generate_results_extraction_plan':
@@ -110,8 +107,7 @@ If `state['current_task']` is 'generate_results_extraction_plan':
     - Loads all necessary result artifacts.
     - Processes and aggregates them.
     - Produces the final charts, tables, and metrics required by the Chief Researcher's plan.
-5.  Use `write_file` to save this script to `{outputs_dir}/workspace/scripts/results_extraction.py`.
-6.  Update the session state: `state['results_extraction_script_artifact'] = 'outputs/{task_id}/workspace/scripts/results_extraction.py'`."""
+5.  Use `write_file` to save this script to `{outputs_dir}/workspace/scripts/results_extraction.py`."""
 
 # Executor Tasks
 EXECUTE_EXPERIMENTS_TASK = """### Task ###
@@ -179,12 +175,11 @@ SENIOR_VALIDATOR_SYNTHESIS = """1. Synthesize junior validator findings with you
    - "Recommendations for Improvement"
    - "Key Files Reviewed" (list all files examined)
    
-4. Make final judgment - BOTH:
-   a) END your critique file with: **FINAL VALIDATION STATUS: [approved|rejected|critical_error]**
-   b) Set `state['validation_status']` to the same value:
-      - 'approved': Work meets all quality standards
-      - 'rejected': Needs refinement but fixable
-      - 'critical_error': Fundamental issues requiring major rework"""
+4. Make final judgment:
+   - END your critique file with: **FINAL VALIDATION STATUS: [approved|rejected|critical_error]**
+   - 'approved': Work meets all quality standards
+   - 'rejected': Needs refinement but fixable
+   - 'critical_error': Fundamental issues requiring major rework"""
 
 SENIOR_VALIDATOR_DECISION_CRITERIA = """- For 'approved': No critical issues, minor improvements optional
 - For 'rejected': Issues that must be fixed but approach is sound

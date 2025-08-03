@@ -160,18 +160,6 @@ class AgentContextPreloader:
                             result = result.replace(placeholder, latest_plan)
                         else:
                             print(f"   ❌ No research plan found in {outputs_dir}/planning/")
-                    elif placeholder == "{artifact_to_validate}":
-                        print(f"   🔍 Missing artifact_to_validate in session state")
-                        # This should have been set by the orchestrator wrapper
-                        # Try to find the latest implementation manifest
-                        task_id = session_state.get("task_id") or config.TASK_ID or "sample_research_task"
-                        outputs_dir = session_state.get("outputs_dir") or config.get_outputs_dir(task_id)
-                        manifest_path = f"{outputs_dir}/planning/implementation_manifest.json"
-                        if os.path.exists(manifest_path):
-                            print(f"   🔧 Found manifest directly: {manifest_path}")
-                            result = result.replace(placeholder, manifest_path)
-                        else:
-                            print(f"   ❌ No manifest found at {manifest_path}")
         
         return result
     

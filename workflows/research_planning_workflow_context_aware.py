@@ -68,13 +68,23 @@ class ContextAwareAgentWrapper(BaseAgent):
         async for event in agent.run_async(ctx):
             yield event
         
+        # After the agent runs, update the state based on its expected file output.
+        # This centralizes state management and makes agent prompts simpler and more robust.
+        if self.name == "ContextAwareChiefResearcher":
+            version = ctx.session.state.get('plan_version', 0)
+            task_id = ctx.session.state.get('task_id', config.TASK_ID)
+            plan_path = f"{config.get_outputs_dir(task_id)}/planning/research_plan_v{version}.md"
+            ctx.session.state['plan_artifact_name'] = plan_path
+            ctx.session.state['artifact_to_validate'] = plan_path
+            print(f"📎 Wrapper set artifact_to_validate for planning: {plan_path}")
+        
         # For orchestrator, set up validation state after it creates the manifest
         if self.name == "ContextAwareOrchestrator" and ctx.session.state.get('current_task') == 'generate_implementation_plan':
-            manifest_path = ctx.session.state.get('implementation_manifest_artifact')
-            if manifest_path:
-                # Set artifact for validation
-                ctx.session.state['artifact_to_validate'] = manifest_path
-                print(f"📎 Set artifact_to_validate: {manifest_path}")
+            task_id = ctx.session.state.get('task_id', config.TASK_ID)
+            manifest_path = f"{config.get_outputs_dir(task_id)}/planning/implementation_manifest.json"
+            ctx.session.state['implementation_manifest_artifact'] = manifest_path
+            ctx.session.state['artifact_to_validate'] = manifest_path
+            print(f"📎 Wrapper set artifact_to_validate for implementation: {manifest_path}")
 
 
 def get_context_aware_research_planning_workflow():
