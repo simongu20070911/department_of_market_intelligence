@@ -44,7 +44,7 @@ async def get_chief_researcher_agent_async() -> LlmAgent:
         instruction_provider=instruction_provider,
         tools=tools,
         after_model_callback=ensure_end_of_output,
-        output_key="research_plan_path"
+        output_key="plan_artifact_name"
     )
     
     _agent_cache[agent_name] = agent
@@ -76,7 +76,7 @@ async def get_orchestrator_agent_async() -> LlmAgent:
         model=get_llm_model(config.ORCHESTRATOR_MODEL),
         instruction_provider=instruction_provider,
         tools=tools,
-        output_key="implementation_manifest_path"
+        output_key="implementation_manifest_artifact"
     )
     
     _agent_cache[agent_name] = agent

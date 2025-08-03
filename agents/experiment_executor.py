@@ -257,3 +257,33 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
         
         print(f"💾 Micro-checkpoint summary: {summary_path}")
 
+
+def get_experiment_executor_agent():
+    """Create Experiment Executor agent with micro-checkpoint support."""
+    agent_name = "Experiment_Executor"
+    
+    # Only use mock agent in actual dry_run mode with LLM skipping
+    if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
+        from ..tools.mock_llm_agent import create_mock_llm_agent
+        return create_mock_llm_agent(name=agent_name)
+    
+    # Get tools from the registry
+    from ..tools.toolset_registry import toolset_registry
+    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
+    
+    # Wrap in list if it's a real MCP toolset, mock tools are already a list
+    tools = [desktop_commander_toolset] if toolset_registry.is_using_real_mcp() else desktop_commander_toolset
+        
+    def instruction_provider(ctx: "ReadonlyContext") -> str:
+        from ..prompts.builder import inject_template_variables_with_context_preloading
+        return inject_template_variables_with_context_preloading(EXPERIMENT_EXECUTOR_INSTRUCTION, ctx, agent_name)
+    
+    agent = MicroCheckpointExperimentExecutor(
+        model=get_llm_model(config.EXECUTOR_MODEL),
+        instruction_provider=instruction_provider,
+        tools=tools,
+        output_key="execution_log_artifact"
+    )
+    
+    return agent
+
