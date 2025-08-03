@@ -90,13 +90,16 @@ def inject_template_variables(template: str, ctx, agent_name: str) -> str:
     from .. import config
     from datetime import datetime
     
-    # Ensure ctx.state is a dictionary to prevent attribute errors
-    session_state = ctx.state if isinstance(ctx.state, dict) else {}
+    # The ctx.state object behaves like a dictionary (e.g., supports .get()),
+    # so we can use it directly. No need for isinstance checks that fail on proxies.
+    session_state = ctx.state
 
     # Get basic variables from context and config, ensuring no None values
     task_id = session_state.get("task_id") or config.TASK_ID
     outputs_dir = config.get_outputs_dir(task_id)
-    current_task = session_state.get("current_task") or "research_planning"
+    # Removed the dangerous fallback that hides the real issue.
+    # This makes it clear if the state is not being set correctly.
+    current_task = session_state.get("current_task") or "TASK_NOT_SET_IN_STATE"
     current_date = datetime.now().strftime("%Y-%m-%d")
     current_year = str(datetime.now().year)
     validation_version = str(session_state.get("validation_version") or 0)

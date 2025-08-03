@@ -83,25 +83,6 @@ def _create_sandbox_tools(agent_name: str) -> List[Any]:
             )
         )
         
-        # Configure Desktop Commander limits after creating toolset
-        try:
-            # Configure write limit
-            result = toolset.invoke_tool(
-                "mcp__desktop-commander__set_config_value",
-                {"key": "fileWriteLineLimit", "value": 2000}
-            )
-            print(f"✅ Sandbox write limit set to 2000: {result.success}")
-            
-            # Configure read limit
-            result = toolset.invoke_tool(
-                "mcp__desktop-commander__set_config_value",
-                {"key": "fileReadLineLimit", "value": 7000}
-            )
-            print(f"✅ Sandbox read limit set to 7000: {result.success}")
-            
-        except Exception as e:
-            print(f"⚠️  Could not set sandbox Desktop Commander limits: {e}")
-            print("   Limits may use default values")
         
         print(f"✅ Sandbox MCP toolset created for {agent_name}")
         print(f"   📁 Working directory: {config._BASE_DIR}")
@@ -165,25 +146,6 @@ def _create_production_tools(agent_name: str) -> List[Any]:
                 )
             )
             
-            # Configure Desktop Commander limits after creating toolset
-            try:
-                # Configure write limit
-                result = toolset.invoke_tool(
-                    "mcp__desktop-commander__set_config_value",
-                    {"key": "fileWriteLineLimit", "value": 2000}
-                )
-                print(f"✅ Set write limit to 2000: {result.success}")
-                
-                # Configure read limit  
-                result = toolset.invoke_tool(
-                    "mcp__desktop-commander__set_config_value", 
-                    {"key": "fileReadLineLimit", "value": 7000}
-                )
-                print(f"✅ Set read limit to 7000: {result.success}")
-                
-            except Exception as e:
-                print(f"⚠️  Could not set Desktop Commander limits: {e}")
-                print("   Limits may use default values")
             
             return toolset
         
