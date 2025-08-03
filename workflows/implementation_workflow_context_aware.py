@@ -73,15 +73,9 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         
         ctx.session.state['current_task'] = 'generate_implementation_plan'
         
-        # Pre-set the expected artifact paths for validation
+        # Set task context for validation detection
         task_id = ctx.session.state.get('task_id', config.TASK_ID)
         outputs_dir = config.get_outputs_dir(task_id)
-        
-        # Set the implementation manifest path that will be created
-        implementation_manifest_path = f"{outputs_dir}/planning/implementation_manifest.json"
-        ctx.session.state['implementation_manifest_artifact'] = implementation_manifest_path
-        ctx.session.state['artifact_to_validate'] = implementation_manifest_path
-        ctx.session.state['validation_context'] = 'implementation_manifest'
         
         # Set the research plan path for validators to reference
         # Look for the latest research plan version
@@ -91,8 +85,17 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
             latest_plan = max(plan_files, key=lambda x: int(x.split('_v')[-1].split('.')[0]))
             ctx.session.state['plan_artifact_name'] = latest_plan
             print(f"📄 Found research plan: {latest_plan}")
+        else:
+            print("⚠️  No research plan found - validators may have limited context")
         
-        print(f"🎯 Pre-set validation targets: manifest={implementation_manifest_path}")
+        # Ensure basic session state is populated for nested workflows
+        ctx.session.state['task_id'] = task_id
+        ctx.session.state['outputs_dir'] = outputs_dir
+        ctx.session.state['current_phase'] = 'implementation'
+        print(f"🔧 Session state populated: task_id={task_id}, outputs_dir={outputs_dir}")
+        
+        # Don't pre-set artifact_to_validate - let orchestrator set it after creating the file
+        # The validation context will be detected based on current_task
         
         # Create checkpoint
         checkpoint_manager.create_checkpoint(
@@ -176,8 +179,14 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
             return
         
         # Run coder workflow (handles its own parallelization)
-        async for event in self._coder_workflow.run_async(ctx):
-            yield event
+        try:
+            async for event in self._coder_workflow.run_async(ctx):
+                yield event
+        except Exception as e:
+            print(f"⚠️  Coder workflow error (non-fatal): {e}")
+            # Don't set critical_error - allow workflow to continue
+            # The experiment executor can still run with existing code
+            ctx.session.state['coder_status'] = 'partial_failure'
         
         # Each coder output is validated with context-aware validation
         # The coder workflow should set artifacts for validation

@@ -1,0 +1,1 @@
+your job is to analyze the bitcoin klines file at %loc%. we have several libraries to use. Your task is to find meaningful strategies. Your final implementation will be tested against real market data. 

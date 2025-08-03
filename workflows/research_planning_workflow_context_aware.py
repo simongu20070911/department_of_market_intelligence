@@ -67,6 +67,14 @@ class ContextAwareAgentWrapper(BaseAgent):
         # Run the freshly created agent
         async for event in agent.run_async(ctx):
             yield event
+        
+        # For orchestrator, set up validation state after it creates the manifest
+        if self.name == "ContextAwareOrchestrator" and ctx.session.state.get('current_task') == 'generate_implementation_plan':
+            manifest_path = ctx.session.state.get('implementation_manifest_artifact')
+            if manifest_path:
+                # Set artifact for validation
+                ctx.session.state['artifact_to_validate'] = manifest_path
+                print(f"📎 Set artifact_to_validate: {manifest_path}")
 
 
 def get_context_aware_research_planning_workflow():
@@ -175,12 +183,31 @@ def get_context_aware_orchestrator_workflow():
         max_iterations = min(max_iterations, config.MAX_DRY_RUN_ITERATIONS)
         print(f"DRY RUN MODE: Limiting orchestrator loop to {max_iterations} iterations")
     
-    # Create the main orchestrator loop with standard LoopAgent
+    # Use standard LoopAgent but wrap it to set the flag when done
     orchestrator_loop = LoopAgent(
         name="OrchestratorPlanningLoop",
         max_iterations=max_iterations,
         sub_agents=[refinement_sequence]
     )
+    
+    # Create a wrapper that sets the max retries flag after the loop completes
+    class LoopResultHandler(BaseAgent):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+        
+        async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+            # Run the orchestrator loop
+            async for event in orchestrator_loop.run_async(ctx):
+                yield event
+            
+            # After loop completes, check if we need to set the max retries flag
+            validation_status = ctx.session.state.get('validation_status', 'unknown')
+            if validation_status != 'approved':
+                print(f"⚠️  Orchestrator loop completed without approval - setting max retries flag")
+                ctx.session.state['orchestrator_max_retries_reached'] = True
+                ctx.session.state['orchestrator_iteration_count'] = max_iterations
+    
+    orchestrator_loop_with_fallback = LoopResultHandler(name="OrchestratorLoopHandler")
     
     # Create parallel final validation
     parallel_validation = ContextAwareValidationWrapper(
@@ -195,7 +222,7 @@ def get_context_aware_orchestrator_workflow():
     complete_orchestrator_workflow = SequentialAgent(
         name="CompleteOrchestratorWorkflow",
         sub_agents=[
-            orchestrator_loop,
+            orchestrator_loop_with_fallback,
             parallel_validation,
             final_status_check
         ]

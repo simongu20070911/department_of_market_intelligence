@@ -8,16 +8,15 @@ load_dotenv() # Load variables from .env file
 # --- Custom Gemini Endpoint Configuration ---
 # If you have a custom base endpoint for the Gemini API, specify it here.
 # If this is None or an empty string, the default endpoint will be used.
-CUSTOM_GEMINI_API_ENDPOINT = os.getenv("CUSTOM_GEMINI_API_ENDPOINT", "http://192.168.110.42:10000")
+CUSTOM_GEMINI_API_ENDPOINT = os.getenv("CUSTOM_GEMINI_API_ENDPOINT", "http://localhost:10000")
 
 # --- API Format Toggle ---
 USE_OPENAI_FORMAT = os.getenv("USE_OPENAI_FORMAT", "true").lower() == "true"  # Set to true to use OpenAI format, false for Gemini
 
 # --- API Key Configuration ---
 # For custom endpoints that expect a specific key format
-CUSTOM_API_KEY = os.getenv("CUSTOM_API_KEY", "sk-7m-daily-token-1")
-# Standard Google API key (used when no custom endpoint is specified)
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+CUSTOM_API_KEY = os.getenv("CUSTOM_API_KEY", "sk-7m-daily-token-x")
+
 
 # --- Model Configurations ---
 CHIEF_RESEARCHER_MODEL = "gemini-2.5-pro"
@@ -60,7 +59,7 @@ END_OF_OUTPUT_MARKER = "<end of output>"
 
 # --- Task Management ---
 # The task identifier to research. Corresponds to a file in the /tasks directory.
-TASK_ID = os.getenv("TASK_ID", "sample_research_task")  # Without .md extension
+TASK_ID = os.getenv("TASK_ID", "bitcoin")  # Without .md extension
 ENABLE_CHECKPOINTING = os.getenv("ENABLE_CHECKPOINTING", "true").lower() == "true"
 CHECKPOINT_INTERVAL = int(os.getenv("CHECKPOINT_INTERVAL", "1"))  # Save checkpoint after every N agents
 

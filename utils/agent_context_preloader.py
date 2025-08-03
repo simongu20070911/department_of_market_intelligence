@@ -141,8 +141,37 @@ class AgentContextPreloader:
         # Apply replacements
         result = instruction
         for placeholder, value in replacements.items():
-            if placeholder in result and value:
-                result = result.replace(placeholder, str(value))
+            if placeholder in result:
+                if value:
+                    result = result.replace(placeholder, str(value))
+                else:
+                    # Debug missing session state values and attempt fallback
+                    if placeholder == "{plan_artifact_name}":
+                        print(f"   🔍 Missing plan_artifact_name in session state")
+                        print(f"   📋 Available keys: {list(session_state.keys())}")
+                        # Try to find the research plan directly
+                        task_id = session_state.get("task_id") or config.TASK_ID or "sample_research_task"
+                        outputs_dir = session_state.get("outputs_dir") or config.get_outputs_dir(task_id)
+                        import glob
+                        plan_files = glob.glob(f"{outputs_dir}/planning/research_plan_v*.md")
+                        if plan_files:
+                            latest_plan = max(plan_files, key=lambda x: int(x.split('_v')[-1].split('.')[0]))
+                            print(f"   🔧 Found research plan directly: {latest_plan}")
+                            result = result.replace(placeholder, latest_plan)
+                        else:
+                            print(f"   ❌ No research plan found in {outputs_dir}/planning/")
+                    elif placeholder == "{artifact_to_validate}":
+                        print(f"   🔍 Missing artifact_to_validate in session state")
+                        # This should have been set by the orchestrator wrapper
+                        # Try to find the latest implementation manifest
+                        task_id = session_state.get("task_id") or config.TASK_ID or "sample_research_task"
+                        outputs_dir = session_state.get("outputs_dir") or config.get_outputs_dir(task_id)
+                        manifest_path = f"{outputs_dir}/planning/implementation_manifest.json"
+                        if os.path.exists(manifest_path):
+                            print(f"   🔧 Found manifest directly: {manifest_path}")
+                            result = result.replace(placeholder, manifest_path)
+                        else:
+                            print(f"   ❌ No manifest found at {manifest_path}")
         
         return result
     
