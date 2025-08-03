@@ -63,33 +63,20 @@ class DryRunFileSystem:
         """Create the complete directory structure for a task."""
         base_dir = f"outputs/{task_id}"
         
-        # Define the required directory structure
-        required_dirs = [
-            base_dir,
-            f"{base_dir}/planning",
-            f"{base_dir}/planning/critiques", 
-            f"{base_dir}/workspace",
-            f"{base_dir}/workspace/scripts",
-            f"{base_dir}/workspace/notebooks",
-            f"{base_dir}/workspace/src",
-            f"{base_dir}/workspace/tests",
-            f"{base_dir}/results",
-            f"{base_dir}/results/deliverables",
-            f"{base_dir}/results/deliverables/presentations",
-            f"{base_dir}/results/charts",
-            f"{base_dir}/data",
-            f"{base_dir}/data/external", 
-            f"{base_dir}/data/processed",
-            f"{base_dir}/data/raw"
-        ]
+        # Use the centralized directory structure constant
+        from ..utils.directory_manager import DIRECTORY_STRUCTURE
         
-        # Create all directories
-        for dir_path in required_dirs:
+        # Create base directory
+        self.directories.add(base_dir)
+        
+        # Create all subdirectories from the constant
+        for rel_path in DIRECTORY_STRUCTURE:
+            dir_path = os.path.join(base_dir, rel_path)
             self.directories.add(dir_path)
             self.log_operation("AUTO_CREATE_DIR", dir_path, "Required directory structure")
             
         print(f"[DRY RUN] 🏗️  Created complete directory structure for task: {task_id}")
-        print(f"[DRY RUN] 📁 Created {len(required_dirs)} directories")
+        print(f"[DRY RUN] 📁 Created {len(DIRECTORY_STRUCTURE) + 1} directories")
         
     def get_directory_structure_summary(self, task_id: str) -> str:
         """Get a tree-like summary of the created directory structure."""

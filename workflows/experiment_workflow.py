@@ -9,32 +9,7 @@ from google.adk.events import Event
 from ..agents.experiment_executor import get_experiment_executor_agent
 from ..agents.validators import get_junior_validator_agent, get_senior_validator_agent, MetaValidatorCheckAgent, get_parallel_final_validation_agent
 from .. import config
-
-def _create_validation_loop(agent_to_validate: BaseAgent, loop_name: str, max_loops: int = 5) -> SequentialAgent:
-    """Helper factory to create a standard refinement/validation loop for an agent with final parallel validation."""
-    main_loop = LoopAgent(
-        name=loop_name,
-        max_iterations=max_loops,
-        sub_agents=[
-            SequentialAgent(
-                name=f"{agent_to_validate.name}_And_Validate_Seq",
-                sub_agents=[
-                    agent_to_validate,
-                    get_junior_validator_agent(),
-                    get_senior_validator_agent(),
-                    MetaValidatorCheckAgent(name=f"{agent_to_validate.name}_MetaCheck")
-                ]
-            )
-        ]
-    )
-    
-    return SequentialAgent(
-        name=f"{loop_name}_WithParallelValidation",
-        sub_agents=[
-            main_loop,
-            get_parallel_final_validation_agent()
-        ]
-    )
+from .coder_workflow import create_validation_loop
 
 class ExperimentWorkflowAgent(BaseAgent):
     """
@@ -49,7 +24,7 @@ class ExperimentWorkflowAgent(BaseAgent):
         print("EXPERIMENT WORKFLOW: Executor is running the experiments...")
         
         if self._executor_loop is None:
-            self._executor_loop = _create_validation_loop(
+            self._executor_loop = create_validation_loop(
                 agent_to_validate=get_experiment_executor_agent(),
                 loop_name="ExecutorValidationLoop"
             )

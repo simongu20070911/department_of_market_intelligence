@@ -125,11 +125,9 @@ class SandboxManager:
         outputs_dir = self.get_outputs_dir(task_id)
         
         # Create the same structure as production but in sandbox
-        from .directory_manager import DIRECTORY_STRUCTURE
+        from .directory_manager import create_task_directory_structure
         
-        for directory in DIRECTORY_STRUCTURE:
-            dir_path = os.path.join(outputs_dir, directory)
-            os.makedirs(dir_path, exist_ok=True)
+        create_task_directory_structure(outputs_dir)
         
         print(f"📁 Created sandbox directory structure for task: {task_id}")
         print(f"   📍 Location: {outputs_dir}")

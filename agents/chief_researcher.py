@@ -22,12 +22,13 @@ from ..prompts.definitions.chief_researcher import CHIEF_RESEARCHER_INSTRUCTION
 class MicroCheckpointChiefResearcher(LlmAgent):
     """Chief Researcher with micro-checkpoint support for fine-grained recovery."""
     
-    def __init__(self, model, tools, instruction_provider):
+    def __init__(self, model, tools, instruction_provider, **kwargs):
         super().__init__(
             model=model,
             name="Chief_Researcher",
             instruction=instruction_provider,
-            tools=tools
+            tools=tools,
+            **kwargs
         )
     
     async def _run_async_impl(self, ctx):
@@ -222,27 +223,3 @@ class MicroCheckpointChiefResearcher(LlmAgent):
         
         print(f"💾 Planning micro-checkpoint summary: {summary_path}")
 
-
-def get_chief_researcher_agent():
-    """Creates Chief Researcher agent with micro-checkpoint support."""
-    # Use the centralized toolset registry
-    from ..tools.toolset_registry import toolset_registry
-    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
-    
-    # Wrap in list if it's a real MCP toolset, mock tools are already a list
-    if toolset_registry.is_using_real_mcp():
-        tools = [desktop_commander_toolset]
-    else:
-        tools = desktop_commander_toolset
-    
-    # Create instruction provider for dynamic template variable injection with context pre-loading
-    def instruction_provider(ctx=None) -> str:
-        from ..prompts.builder import inject_template_variables_with_context_preloading
-        return inject_template_variables_with_context_preloading(CHIEF_RESEARCHER_INSTRUCTION, ctx, "Chief_Researcher")
-    
-    # Return micro-checkpoint enabled agent
-    return MicroCheckpointChiefResearcher(
-        model=get_llm_model(config.CHIEF_RESEARCHER_MODEL),
-        instruction_provider=instruction_provider,
-        tools=tools
-    )

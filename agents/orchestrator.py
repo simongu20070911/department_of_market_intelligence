@@ -23,13 +23,14 @@ from ..prompts.definitions.orchestrator import ORCHESTRATOR_INSTRUCTION
 class MicroCheckpointOrchestrator(LlmAgent):
     """Orchestrator with micro-checkpoint support for fine-grained recovery."""
     
-    def __init__(self, model, tools, instruction_provider):
+    def __init__(self, model, tools, instruction_provider, **kwargs):
+        kwargs.setdefault('after_model_callback', ensure_end_of_output)
         super().__init__(
             model=model,
             name="Orchestrator",
             instruction=instruction_provider,
             tools=tools,
-            after_model_callback=ensure_end_of_output
+            **kwargs
         )
     
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
@@ -231,27 +232,3 @@ class MicroCheckpointOrchestrator(LlmAgent):
         
         print(f"💾 Orchestration micro-checkpoint summary: {summary_path}")
 
-
-def get_orchestrator_agent():
-    """Creates Orchestrator agent with micro-checkpoint support."""
-    # Use the centralized toolset registry
-    from ..tools.toolset_registry import toolset_registry
-    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
-    
-    # Wrap in list if it's a real MCP toolset, mock tools are already a list
-    if toolset_registry.is_using_real_mcp():
-        tools = [desktop_commander_toolset]
-    else:
-        tools = desktop_commander_toolset
-        
-    # Create instruction provider for dynamic template variable injection with context pre-loading
-    def instruction_provider(ctx: ReadonlyContext) -> str:
-        from ..prompts.builder import inject_template_variables_with_context_preloading
-        return inject_template_variables_with_context_preloading(ORCHESTRATOR_INSTRUCTION, ctx, "Orchestrator")
-    
-    # Return the micro-checkpoint enabled orchestrator
-    return MicroCheckpointOrchestrator(
-        model=get_llm_model(config.ORCHESTRATOR_MODEL),
-        tools=tools,
-        instruction_provider=instruction_provider
-    )

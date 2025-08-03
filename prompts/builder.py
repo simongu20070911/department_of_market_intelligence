@@ -27,8 +27,8 @@ class PromptBuilder:
     
     def add_communication_protocol(self) -> 'PromptBuilder':
         """Add standard communication protocol."""
-        from .base import COMMUNICATION_PROTOCOL
-        return self.add_section(COMMUNICATION_PROTOCOL, ['agent_name', 'outputs_dir', 'current_task'])
+        from .base import COMMUNICATION_PROTOCOL_WITH_PATH_VALIDATION
+        return self.add_section(COMMUNICATION_PROTOCOL_WITH_PATH_VALIDATION, ['agent_name', 'outputs_dir', 'current_task'])
     
     def add_communication_protocol_with_path_validation(self) -> 'PromptBuilder':
         """Add enhanced communication protocol with path validation."""

@@ -7,7 +7,7 @@ import os
 from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
 from google.genai.types import Content, Part
-from workflows.root_workflow import RootWorkflowAgent
+from workflows.root_workflow_context_aware import RootWorkflowAgentContextAware
 from tasks import load_research_task
 
 async def main():
@@ -16,7 +16,7 @@ async def main():
     print("Starting ULTRATHINK_QUANTITATIVEMarketlapha Simple Test...")
     
     # Create the root workflow agent
-    root_agent = RootWorkflowAgent(name="RootWorkflow")
+    root_agent = RootWorkflowAgentContextAware(name="RootWorkflow")
     
     # Set up services
     session_service = InMemorySessionService()

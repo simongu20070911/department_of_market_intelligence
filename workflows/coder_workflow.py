@@ -15,7 +15,7 @@ from ..utils.model_loader import get_llm_model
 
 
 
-def _create_validation_loop(agent_to_validate: BaseAgent, loop_name: str, max_loops: int = 5) -> SequentialAgent:
+def create_validation_loop(agent_to_validate: BaseAgent, loop_name: str, max_loops: int = 5) -> SequentialAgent:
     """Helper factory to create a standard refinement/validation loop for an agent with final parallel validation."""
     main_loop = LoopAgent(
         name=loop_name,
@@ -97,7 +97,7 @@ class CoderWorkflowAgent(BaseAgent):
             ctx.session.state['validation_version'] = 0
             
             if self._coder_validation_loop_template is None:
-                 self._coder_validation_loop_template = _create_validation_loop(
+                 self._coder_validation_loop_template = create_validation_loop(
                     agent_to_validate=get_coder_agent(),
                     loop_name="CoderValidationLoop",
                     max_loops=config.MAX_CODE_REFINEMENT_LOOPS
@@ -136,7 +136,7 @@ class CoderWorkflowAgent(BaseAgent):
             
             async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
                 if self._validation_loop is None:
-                    self._validation_loop = _create_validation_loop(
+                    self._validation_loop = create_validation_loop(
                         agent_to_validate=get_coder_agent(),
                         loop_name=f"CoderValidationLoop_{self._task_data['task_id']}",
                         max_loops=config.MAX_CODE_REFINEMENT_LOOPS

@@ -4,6 +4,31 @@
 import os
 from typing import List
 
+# Define all required subdirectories as a constant for reuse
+DIRECTORY_STRUCTURE = [
+    # Planning directories
+    "planning",
+    "planning/critiques", 
+    
+    # Workspace directories
+    "workspace",
+    "workspace/scripts",
+    "workspace/notebooks",
+    "workspace/src",
+    "workspace/tests",
+    
+    # Results directories
+    "results",
+    "results/deliverables",
+    "results/deliverables/presentations",
+    "results/charts",
+    
+    # Data directories
+    "data",
+    "data/external",
+    "data/processed",
+    "data/raw",
+]
 
 def create_task_directory_structure(outputs_dir: str) -> None:
     """Create the complete directory structure for a task.
@@ -30,38 +55,13 @@ def create_task_directory_structure(outputs_dir: str) -> None:
     Args:
         outputs_dir: The base outputs directory path
     """
-    # Define all required subdirectories
-    required_dirs = [
-        # Planning directories
-        f"{outputs_dir}/planning",
-        f"{outputs_dir}/planning/critiques", 
-        
-        # Workspace directories
-        f"{outputs_dir}/workspace",
-        f"{outputs_dir}/workspace/scripts",
-        f"{outputs_dir}/workspace/notebooks",
-        f"{outputs_dir}/workspace/src",
-        f"{outputs_dir}/workspace/tests",
-        
-        # Results directories
-        f"{outputs_dir}/results",
-        f"{outputs_dir}/results/deliverables",
-        f"{outputs_dir}/results/deliverables/presentations",
-        f"{outputs_dir}/results/charts",
-        
-        # Data directories
-        f"{outputs_dir}/data",
-        f"{outputs_dir}/data/external",
-        f"{outputs_dir}/data/processed",
-        f"{outputs_dir}/data/raw",
-    ]
-    
-    # Create all directories
-    for dir_path in required_dirs:
+    # Create all directories from the constant
+    for rel_path in DIRECTORY_STRUCTURE:
+        dir_path = os.path.join(outputs_dir, rel_path)
         os.makedirs(dir_path, exist_ok=True)
     
     print(f"📁 Created complete directory structure in: {outputs_dir}")
-    print(f"   • {len(required_dirs)} subdirectories created")
+    print(f"   • {len(DIRECTORY_STRUCTURE)} subdirectories created")
 
 
 def validate_directory_structure(outputs_dir: str) -> List[str]:
@@ -73,23 +73,9 @@ def validate_directory_structure(outputs_dir: str) -> List[str]:
     Returns:
         List of missing directories (empty if all exist)
     """
-    required_dirs = [
-        f"{outputs_dir}/planning",
-        f"{outputs_dir}/planning/critiques", 
-        f"{outputs_dir}/workspace/scripts",
-        f"{outputs_dir}/workspace/notebooks",
-        f"{outputs_dir}/workspace/src",
-        f"{outputs_dir}/workspace/tests",
-        f"{outputs_dir}/results/deliverables",
-        f"{outputs_dir}/results/deliverables/presentations",
-        f"{outputs_dir}/results/charts",
-        f"{outputs_dir}/data/external",
-        f"{outputs_dir}/data/processed",
-        f"{outputs_dir}/data/raw",
-    ]
-    
     missing_dirs = []
-    for dir_path in required_dirs:
+    for rel_path in DIRECTORY_STRUCTURE:
+        dir_path = os.path.join(outputs_dir, rel_path)
         if not os.path.exists(dir_path):
             missing_dirs.append(dir_path)
     

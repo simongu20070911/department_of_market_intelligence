@@ -13,7 +13,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.adk.artifacts import InMemoryArtifactService
 from google.genai.types import Content, Part
-from department_of_market_intelligence.workflows.root_workflow import RootWorkflowAgent
+from department_of_market_intelligence.workflows.root_workflow_context_aware import RootWorkflowAgentContextAware
 from department_of_market_intelligence.config import TASKS_DIR
 
 # ANSI color codes
@@ -74,7 +74,7 @@ async def monitored_main():
     artifact_service = InMemoryArtifactService()
     
     # Create root agent
-    root_agent = RootWorkflowAgent(name="MarketAlpha_Root")
+    root_agent = RootWorkflowAgentContextAware(name="MarketAlpha_Root")
     
     runner = Runner(
         agent=root_agent,
