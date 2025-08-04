@@ -245,7 +245,15 @@ class MicroCheckpointOrchestrator(LlmAgent):
         response = await self.model.acompletion(messages=messages)
         
         # Extract content from LiteLLM response
-        content_to_write = response.choices[0].message.content.strip()
+        # Handle streaming response if needed
+        if hasattr(response, '__aiter__'):  # It's a streaming response
+            content_parts = []
+            async for chunk in response:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    content_parts.append(chunk.choices[0].delta.content)
+            content_to_write = ''.join(content_parts).strip()
+        else:  # Regular response
+            content_to_write = response.choices[0].message.content.strip()
 
         # Clean up code blocks if the model wraps the output
         if content_to_write.startswith("```"):
@@ -255,7 +263,16 @@ class MicroCheckpointOrchestrator(LlmAgent):
 
         print(f"   ✍️ Writing content to: {filename}")
         write_tool = self._find_tool("write_file")
-        await write_tool.invoke(path=filename, content=content_to_write)
+        # run_async is a coroutine that returns an async generator
+        tool_events = await write_tool.run_async(
+            args={'path': filename, 'content': content_to_write},
+            tool_context=None
+        )
+        
+        # Now iterate over the events
+        async for event in tool_events:
+            # We don't need to process the events, just consume them
+            pass
 
         return {
             "step_name": step_name,

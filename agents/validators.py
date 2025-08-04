@@ -47,17 +47,15 @@ def get_validation_context_prompt(context_type: str, role: str) -> str:
 
 
 def get_junior_validator_agent():
-    """Create a context-aware junior validator, using a cache for statefulness within a loop."""
+    """Create a context-aware junior validator."""
+    # FIX: Removed caching to allow for parallel execution.
+    # Each validation loop needs its own unique agent instances.
     agent_name = "Junior_Validator"
-    if agent_name in _validator_agent_cache:
-        return _validator_agent_cache[agent_name]
-
+    
     # Only use mock agent in actual dry_run mode with LLM skipping
     if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
         from ..tools.mock_llm_agent import create_mock_llm_agent
-        agent = create_mock_llm_agent(name=agent_name)
-        _validator_agent_cache[agent_name] = agent
-        return agent
+        return create_mock_llm_agent(name=agent_name)
     
     # Use the centralized toolset registry
     from ..tools.toolset_registry import toolset_registry
@@ -82,22 +80,18 @@ def get_junior_validator_agent():
         tools=tools,
         after_model_callback=ensure_end_of_output
     )
-    _validator_agent_cache[agent_name] = agent
     return agent
 
 
 def get_senior_validator_agent():
-    """Create a context-aware senior validator, using a cache for statefulness within a loop."""
+    """Create a context-aware senior validator."""
+    # FIX: Removed caching to allow for parallel execution.
     agent_name = "Senior_Validator"
-    if agent_name in _validator_agent_cache:
-        return _validator_agent_cache[agent_name]
 
     # Only use mock agent in actual dry_run mode with LLM skipping
     if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
         from ..tools.mock_llm_agent import create_mock_llm_agent
-        agent = create_mock_llm_agent(name=agent_name)
-        _validator_agent_cache[agent_name] = agent
-        return agent
+        return create_mock_llm_agent(name=agent_name)
     
     # Use the centralized toolset registry
     from ..tools.toolset_registry import toolset_registry
@@ -122,7 +116,6 @@ def get_senior_validator_agent():
         tools=tools,
         after_model_callback=ensure_end_of_output
     )
-    _validator_agent_cache[agent_name] = agent
     return agent
 
 

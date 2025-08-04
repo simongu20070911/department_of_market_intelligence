@@ -246,6 +246,9 @@ async def main(resume_from_checkpoint: str = None):
             print(f"\n⚠️  MCP connection cleanup (non-fatal)")
         else:
             print(f"\n❌ Workflow execution error: {e}")
+            # Add traceback for debugging
+            import traceback
+            traceback.print_exc()
         
         # Attempt graceful cleanup
         try:

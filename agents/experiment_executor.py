@@ -273,30 +273,37 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
         """Execute a single experiment by running its script."""
         
         experiment_name = experiment_config.get("name", "Unknown_Experiment")
-        script_command = experiment_config.get("code") # e.g., "python workspace/scripts/task_1.py"
+        script_command = experiment_config.get("code")
         
         if not script_command:
             raise ValueError(f"No 'code' command found in experiment config for '{experiment_name}'")
 
         print(f"   🔬 Executing: {experiment_name} -> `{script_command}`")
 
-        # Find and invoke the terminal/script execution tool
-        # Note: The tool name might be 'run_script_in_terminal' or similar depending on MCP version
         try:
             exec_tool = self._find_tool("run_script_in_terminal")
         except ValueError:
-            exec_tool = self._find_tool("execute_shell_command") # Fallback for different naming
+            exec_tool = self._find_tool("execute_shell_command")
 
-        tool_result = await exec_tool.invoke(command=script_command)
+        # --- FIX: Correctly iterate over the tool's async generator to get the result ---
+        tool_result = None
+        tool_event_generator = exec_tool.run_async(
+            args={'command': script_command},
+            tool_context=None
+        )
+        
+        async for event in tool_event_generator:
+            # The tool result is in the function_response of the final event
+            if event.is_final_response() and event.get_function_responses():
+                tool_result = event.get_function_responses()[0].response
+        # --- END FIX ---
         
         print(f"   📊 Execution result for '{experiment_name}':\n{tool_result}")
 
-        # Check for errors in the tool output
         status = "completed"
-        if isinstance(tool_result, str) and ("error" in tool_result.lower() or "failed" in tool_result.lower()):
+        if isinstance(tool_result, dict) and tool_result.get('status') == 'error':
             status = "failed"
-            # Raise an exception to be caught by the step context, triggering retry logic if configured
-            raise RuntimeError(f"Execution of '{experiment_name}' failed: {tool_result}")
+            raise RuntimeError(f"Execution of '{experiment_name}' failed: {tool_result.get('error_message', 'Unknown error')}")
 
         return {
             "experiment_name": experiment_name,

@@ -97,10 +97,12 @@ class ContextAwareAgentWrapper(BaseAgent):
                 ctx.session.state['artifact_to_validate'] = latest_plan
                 print(f"📎 Wrapper found latest plan and set for validation: {os.path.basename(latest_plan)}")
             else:
-                # FIX: Removed the dangerous fallback. If the file wasn't created,
-                # the validator should fail on the missing file, not on empty content.
+                # --- FIX: Prevent validator from running on a non-existent file ---
                 # This makes the point of failure much clearer.
                 print(f"⚠️  Wrapper could not find any research plan files in {outputs_dir}/planning/")
+                # Set a clear "not found" state instead of a path that will fail later
+                ctx.session.state['artifact_to_validate'] = "FILE_NOT_FOUND" 
+                # --- END FIX ---
 
         if self.name == "ContextAwareOrchestrator":
             # The orchestrator creates a single manifest file, so we can use a fixed path

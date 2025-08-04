@@ -235,17 +235,24 @@ class MicroCheckpointChiefResearcher(LlmAgent):
 
     async def _execute_step_with_llm(self, ctx: InvocationContext, step_config: Dict[str, Any], prompt: str) -> Dict[str, Any]:
         """Generic helper to execute a step that generates a file via LLM."""
+        from google.genai.types import Content, Part
+
         step_name = step_config.get("step_name", "Unknown_Step")
         filename = step_config.get("filename", "unknown.md")
         
         print(f"   🧠 Generating content for: {step_name}")
         
-        # Generate content using LiteLLM's acompletion method
-        messages = [{"role": "user", "content": prompt}]
-        response = await self.model.acompletion(messages=messages)
+        # --- FIX: Use the standard ADK method for calling the model ---
+        request_content = Content(parts=[Part(text=prompt)])
+        content_to_write = ""
         
-        # Extract content from LiteLLM response
-        content_to_write = response.choices[0].message.content.strip()
+        # The generate_content_async method returns a stream of LlmResponse objects
+        async for llm_response in self.model.generate_content_async(request_content):
+            if llm_response.text:
+                content_to_write += llm_response.text
+        
+        content_to_write = content_to_write.strip()
+        # --- END FIX ---
 
         # Clean up markdown code blocks if the model wraps the output
         if content_to_write.startswith("```markdown"):
@@ -256,7 +263,17 @@ class MicroCheckpointChiefResearcher(LlmAgent):
         # Write the content to the specified file using the agent's tool
         print(f"   ✍️ Writing content to: {filename}")
         write_tool = self._find_tool("write_file")
-        await write_tool.invoke(path=filename, content=content_to_write)
+        
+        # --- FIX: Correctly iterate over the async generator from run_async ---
+        tool_event_generator = write_tool.run_async(
+            args={'path': filename, 'content': content_to_write},
+            tool_context=None # Note: This context is None, which might be a limitation for complex tools
+        )
+        
+        # Consume the generator to ensure the tool call completes
+        async for _ in tool_event_generator:
+            pass
+        # --- END FIX ---
 
         return {
             "step_name": step_name,

@@ -9,8 +9,8 @@ class StreamingLiteLlm(LiteLlm):
         """Initialize with model and store litellm-specific parameters."""
         super().__init__(model=model)
         
-        # Store litellm-specific parameters
-        self.litellm_params = {
+        # Store litellm-specific parameters using the parent class's _additional_args
+        self._additional_args = {
             "model": model,
             "api_key": kwargs.get("api_key"),
             "api_base": kwargs.get("api_base"),
@@ -22,7 +22,7 @@ class StreamingLiteLlm(LiteLlm):
             "retry_after": kwargs.get("retry_after"),
         }
         # Remove None values
-        self.litellm_params = {k: v for k, v in self.litellm_params.items() if v is not None}
+        self._additional_args = {k: v for k, v in self._additional_args.items() if v is not None}
     
     async def acompletion(self, **kwargs):
         """Direct pass-through to litellm's acompletion function."""
@@ -33,7 +33,7 @@ class StreamingLiteLlm(LiteLlm):
         
         # Merge stored parameters with call-time parameters
         # Call-time parameters take precedence
-        final_params = {**self.litellm_params, **kwargs}
+        final_params = {**self._additional_args, **kwargs}
         
         # Use litellm library directly
         return await litellm.acompletion(**final_params)
