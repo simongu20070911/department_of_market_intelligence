@@ -264,14 +264,13 @@ class MicroCheckpointOrchestrator(LlmAgent):
         print(f"   ✍️ Writing content to: {filename}")
         write_tool = self._find_tool("write_file")
         # run_async is a coroutine that returns an async generator
-        tool_events = await write_tool.run_async(
+        tool_event_generator = write_tool.run_async(
             args={'path': filename, 'content': content_to_write},
             tool_context=None
         )
         
-        # Now iterate over the events
-        async for event in tool_events:
-            # We don't need to process the events, just consume them
+        # Now iterate over the events to consume the generator and execute the tool
+        async for _ in tool_event_generator:
             pass
 
         return {
