@@ -10,6 +10,7 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 from .. import config
 from ..utils.model_loader import get_llm_model
+from ..utils.callbacks import ensure_end_of_output
 from google.adk.agents.llm_agent import InstructionProvider, ReadonlyContext
 from ..prompts.definitions.validators import (
     JUNIOR_VALIDATOR_INSTRUCTIONS,
@@ -20,6 +21,17 @@ from ..prompts.components.contexts import (
     JUNIOR_VALIDATION_PROMPTS,
     SENIOR_VALIDATION_PROMPTS
 )
+
+
+# Cache for validator agents to maintain state within a single refinement loop.
+_validator_agent_cache: Dict[str, BaseAgent] = {}
+
+def clear_validator_cache():
+    """Clear the validator agent cache to ensure fresh instances for new refinement loops."""
+    global _validator_agent_cache
+    if _validator_agent_cache:
+        print("🔄 Clearing validator agent cache for new refinement cycle.")
+        _validator_agent_cache.clear()
 
 
 # Note: VALIDATION_CONTEXTS is imported from prompts/definitions/validators.py
@@ -35,11 +47,17 @@ def get_validation_context_prompt(context_type: str, role: str) -> str:
 
 
 def get_junior_validator_agent():
-    """Create a context-aware junior validator."""
+    """Create a context-aware junior validator, using a cache for statefulness within a loop."""
+    agent_name = "Junior_Validator"
+    if agent_name in _validator_agent_cache:
+        return _validator_agent_cache[agent_name]
+
     # Only use mock agent in actual dry_run mode with LLM skipping
     if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
         from ..tools.mock_llm_agent import create_mock_llm_agent
-        return create_mock_llm_agent(name="Junior_Validator")
+        agent = create_mock_llm_agent(name=agent_name)
+        _validator_agent_cache[agent_name] = agent
+        return agent
     
     # Use the centralized toolset registry
     from ..tools.toolset_registry import toolset_registry
@@ -57,20 +75,29 @@ def get_junior_validator_agent():
         base_instruction = JUNIOR_VALIDATOR_INSTRUCTIONS.get(context_type, JUNIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
         return inject_template_variables_with_context_preloading(base_instruction, ctx, "Junior_Validator")
 
-    return LlmAgent(
+    agent = LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
-        name="Junior_Validator",
+        name=agent_name,
         instruction=instruction_provider,
-        tools=tools
+        tools=tools,
+        after_model_callback=ensure_end_of_output
     )
+    _validator_agent_cache[agent_name] = agent
+    return agent
 
 
 def get_senior_validator_agent():
-    """Create a context-aware senior validator with recursive context loading capability."""
+    """Create a context-aware senior validator, using a cache for statefulness within a loop."""
+    agent_name = "Senior_Validator"
+    if agent_name in _validator_agent_cache:
+        return _validator_agent_cache[agent_name]
+
     # Only use mock agent in actual dry_run mode with LLM skipping
     if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
         from ..tools.mock_llm_agent import create_mock_llm_agent
-        return create_mock_llm_agent(name="Senior_Validator")
+        agent = create_mock_llm_agent(name=agent_name)
+        _validator_agent_cache[agent_name] = agent
+        return agent
     
     # Use the centralized toolset registry
     from ..tools.toolset_registry import toolset_registry
@@ -88,12 +115,15 @@ def get_senior_validator_agent():
         base_instruction = SENIOR_VALIDATOR_INSTRUCTIONS.get(context_type, SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
         return inject_template_variables_with_context_preloading(base_instruction, ctx, "Senior_Validator")
 
-    return LlmAgent(
+    agent = LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
-        name="Senior_Validator",
+        name=agent_name,
         instruction=instruction_provider,
-        tools=tools
+        tools=tools,
+        after_model_callback=ensure_end_of_output
     )
+    _validator_agent_cache[agent_name] = agent
+    return agent
 
 
 def create_specialized_parallel_validator(validator_type: str, index: int) -> BaseAgent:
@@ -233,7 +263,9 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
         5. If no critical issues in your domain: "No critical {validator_type.lower()} issues found."
 
         ### Output Format ###
-        End with "<end of output>".
+        1. Write your findings to the specified file
+        2. After writing the file, end your response with "<end of output>"
+        3. DO NOT put "<end of output>" inside the file content
         """
 
     def instruction_provider(ctx: ReadonlyContext) -> str:
@@ -246,7 +278,8 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
         model=get_llm_model(config.VALIDATOR_MODEL),
         name=f"{validator_info['name']}_{index}",
         instruction=instruction_provider,
-        tools=tools
+        tools=tools,
+        after_model_callback=ensure_end_of_output
     )
 
 
@@ -314,39 +347,64 @@ class ParallelFinalValidationAgent(BaseAgent):
         return validators[index % len(validators)]
     
     def _analyze_validation_results(self, ctx: InvocationContext) -> list:
-        """Analyze validation results by parsing critique files for status markers."""
+        """Analyze validation results by parsing parallel validator output files."""
+        import os
+        import re
+        from .. import config
         
-        # Find latest senior critique file
-        senior_critique_path = self._find_latest_senior_critique(ctx)
-        if not senior_critique_path:
-            return ["No senior critique file found"]
+        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        outputs_dir = config.get_outputs_dir(task_id)
+        validation_version = ctx.session.state.get('validation_version', 0)
         
-        # Parse validation status from critique file
-        try:
-            with open(senior_critique_path, 'r') as f:
-                content = f.read()
+        critical_issues = []
+        validators_with_issues = []
+        
+        # Check each parallel validator output
+        validator_types = ["statistical", "data", "market", "methodology", "general", 
+                          "parallelization", "interfaces", "alignment", "efficiency",
+                          "bugs", "performance", "integration", "statistics",
+                          "protocol", "completeness", "quality", "reproducibility",
+                          "coverage", "accuracy", "presentation", "insights"]
+        
+        for validator_type in validator_types:
+            output_file = os.path.join(outputs_dir, f"parallel_validation_{validator_type}_v{validation_version}.md")
             
-            # Look for status marker pattern
-            import re
-            status_match = re.search(r'\*\*FINAL VALIDATION STATUS:\s*(approved|rejected|critical_error)\*\*', content)
-            
-            if status_match:
-                file_status = status_match.group(1)
-                # Update session state to match file status
-                ctx.session.state['validation_status'] = file_status
+            if os.path.exists(output_file):
+                try:
+                    with open(output_file, 'r') as f:
+                        content = f.read()
+                    
+                    # Check if critical issues were found
+                    if "No critical" not in content and len(content.strip()) > 50:
+                        # This validator found issues
+                        validators_with_issues.append(validator_type)
+                        
+                        # Extract specific issues (looking for bullet points or numbered items)
+                        issue_patterns = [
+                            r'[-•]\s*(.+)',  # Bullet points
+                            r'\d+\.\s*(.+)',  # Numbered lists
+                            r'Issue:\s*(.+)',  # Explicit issue markers
+                            r'Problem:\s*(.+)',  # Problem markers
+                        ]
+                        
+                        for pattern in issue_patterns:
+                            matches = re.findall(pattern, content, re.MULTILINE)
+                            for match in matches:
+                                if len(match.strip()) > 10:  # Filter out very short matches
+                                    critical_issues.append(f"[{validator_type}] {match.strip()}")
                 
-                if file_status == 'critical_error':
-                    return ["Critical validation errors found in senior critique"]
-                elif file_status == 'rejected':
-                    return ["Validation rejected - refinement required"]
-                else:  # approved
-                    return []
-            else:
-                # Fallback: no status marker found
-                return ["Senior critique missing status marker"]
-                
-        except Exception as e:
-            return [f"Error parsing senior critique: {str(e)}"]
+                except Exception as e:
+                    print(f"Error reading {output_file}: {e}")
+        
+        # Update session state based on findings
+        if critical_issues:
+            ctx.session.state['validation_status'] = 'critical_error'
+            print(f"PARALLEL VALIDATION: Found critical issues from validators: {', '.join(validators_with_issues)}")
+        else:
+            ctx.session.state['validation_status'] = 'approved'
+            print("PARALLEL VALIDATION: No critical issues found by any validator")
+        
+        return critical_issues
     
     def _find_latest_senior_critique(self, ctx: InvocationContext) -> str:
         """Find the latest senior critique file."""
@@ -470,6 +528,8 @@ class MetaValidatorCheckAgent(BaseAgent):
             new_version = ctx.session.state.get("plan_version", 0) + 1
             ctx.session.state["plan_version"] = new_version
             ctx.session.state["validation_version"] = new_version
+            # ** THE FIX: Clear the cache to get fresh validator instances for the next loop **
+            clear_validator_cache()
         
         # 'escalate=True' is the signal for a LoopAgent to terminate.
         yield Event(

@@ -52,7 +52,12 @@ class ContextAwareValidationWrapper(BaseAgent):
 
 
 class ContextAwareAgentWrapper(BaseAgent):
-    """Generic wrapper to create a fresh agent instance on each run, preventing state leakage."""
+    """
+    Generic wrapper to create a fresh agent instance on each run.
+    Crucially, after the agent runs, it finds the latest artifact on disk to set up
+    the context for the next validation step, making the workflow robust against
+    state-timing issues.
+    """
     
     agent_factory: Callable[[], BaseAgent]
 
@@ -68,23 +73,52 @@ class ContextAwareAgentWrapper(BaseAgent):
         async for event in agent.run_async(ctx):
             yield event
         
-        # After the agent runs, update the state based on its expected file output.
-        # This centralizes state management and makes agent prompts simpler and more robust.
-        if self.name == "ContextAwareChiefResearcher":
-            version = ctx.session.state.get('plan_version', 0)
-            task_id = ctx.session.state.get('task_id', config.TASK_ID)
-            plan_path = f"{config.get_outputs_dir(task_id)}/planning/research_plan_v{version}.md"
-            ctx.session.state['plan_artifact_name'] = plan_path
-            ctx.session.state['artifact_to_validate'] = plan_path
-            print(f"📎 Wrapper set artifact_to_validate for planning: {plan_path}")
+        # After the agent runs, set the artifact for the next step (validation)
+        # by finding the most recent file on disk. This is the most robust method.
         
-        # For orchestrator, set up validation state after it creates the manifest
-        if self.name == "ContextAwareOrchestrator" and ctx.session.state.get('current_task') == 'generate_implementation_plan':
+        if self.name == "ContextAwareChiefResearcher":
+            import glob
+            import os
+            import re
+            
             task_id = ctx.session.state.get('task_id', config.TASK_ID)
-            manifest_path = f"{config.get_outputs_dir(task_id)}/planning/implementation_manifest.json"
-            ctx.session.state['implementation_manifest_artifact'] = manifest_path
-            ctx.session.state['artifact_to_validate'] = manifest_path
-            print(f"📎 Wrapper set artifact_to_validate for implementation: {manifest_path}")
+            outputs_dir = config.get_outputs_dir(task_id)
+            plan_files = glob.glob(f"{outputs_dir}/planning/research_plan_v*.md")
+            
+            if plan_files:
+                # Find the latest plan by extracting the version number from the filename
+                def get_version_from_path(p):
+                    match = re.search(r'_v(\d+)\.md', os.path.basename(p))
+                    return int(match.group(1)) if match else -1
+
+                latest_plan = max(plan_files, key=get_version_from_path)
+                
+                ctx.session.state['plan_artifact_name'] = latest_plan
+                ctx.session.state['artifact_to_validate'] = latest_plan
+                print(f"📎 Wrapper found latest plan and set for validation: {os.path.basename(latest_plan)}")
+            else:
+                print(f"⚠️  Wrapper could not find any research plan files in {outputs_dir}/planning/")
+                # As a fallback, set a default path so the next agent doesn't fail on a missing key
+                version = ctx.session.state.get('plan_version', 0)
+                fallback_path = f"{outputs_dir}/planning/research_plan_v{version}.md"
+                ctx.session.state['artifact_to_validate'] = fallback_path
+
+        if self.name == "ContextAwareOrchestrator":
+            # The orchestrator creates a single manifest file, so we can use a fixed path
+            # but we ensure it's set correctly for the validator.
+            import os
+            task_id = ctx.session.state.get('task_id', config.TASK_ID)
+            outputs_dir = config.get_outputs_dir(task_id)
+            manifest_path = f"{outputs_dir}/planning/implementation_manifest.json"
+            
+            if os.path.exists(manifest_path):
+                ctx.session.state['implementation_manifest_artifact'] = manifest_path
+                ctx.session.state['artifact_to_validate'] = manifest_path
+                print(f"📎 Wrapper confirmed manifest and set for validation: {os.path.basename(manifest_path)}")
+            else:
+                print(f"⚠️  Wrapper could not find the implementation manifest at {manifest_path}")
+                # Set it anyway for the validator to report it's missing
+                ctx.session.state['artifact_to_validate'] = manifest_path
 
 
 def get_context_aware_research_planning_workflow():

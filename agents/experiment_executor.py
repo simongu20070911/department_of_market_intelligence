@@ -6,7 +6,8 @@ from typing import Dict, Any, List, AsyncGenerator
 from google.adk.agents import LlmAgent
 from google.adk.agents.llm_agent import ReadonlyContext
 from google.adk.agents.invocation_context import InvocationContext
-from google.adk.events import Event
+from google.adk.events import Event, EventActions
+from google.genai.types import Content, Part
 
 from .. import config
 from ..utils.callbacks import ensure_end_of_output
@@ -35,6 +36,17 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
     
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         """Enhanced execution with fine-grained checkpointing."""
+        
+        # FIX: Add special handling for results extraction task
+        # This task involves running a single script, not a manifest of experiments.
+        if ctx.session.state.get('current_task') == 'execute_results_extraction':
+            print("🔬 Bypassing manifest parsing for single-script execution task.")
+            # The prompt for the executor should guide it to find and run the
+            # 'results_extraction_script_artifact'.
+            # We fall back to the standard LLM execution, which will follow the prompt.
+            async for event in super()._run_async_impl(ctx):
+                yield event
+            return
         
         # Check if micro-checkpoints are enabled
         if not config.ENABLE_MICRO_CHECKPOINTS:
@@ -84,9 +96,15 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
         experiments = await self._parse_implementation_plan(implementation_plan_path)
         
         if not experiments:
-            print("⚠️  No experiments found - running standard execution")
-            async for event in super()._run_async_impl(ctx):
-                yield event
+            print("❌ CRITICAL ERROR: Could not parse valid experiments from the implementation plan. Halting.")
+            ctx.session.state['execution_status'] = 'critical_error'
+            ctx.session.state['error_type'] = 'ManifestParseError'
+            ctx.session.state['error_details'] = f"Failed to parse experiments from {implementation_plan_path}. Check manifest format is a JSON object."
+            yield Event(
+                author=self.name,
+                actions=EventActions(escalate=True),
+                content=Content(parts=[Part(text="Could not parse experiments from manifest.")])
+            )
             return
         
         # Create tracked operation for experiment execution
@@ -183,8 +201,22 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
     async def _parse_implementation_plan(self, plan_path: str) -> List[Dict[str, Any]]:
         """Parse implementation plan from JSON manifest to extract experiment configurations."""
         try:
-            with open(plan_path, 'r') as f:
-                manifest_data = json.load(f)
+            # Check if plan_path is actually a path or raw content
+            if not os.path.exists(plan_path):
+                print(f"⚠️  Implementation plan path does not exist. Assuming content is raw JSON.")
+                manifest_data = json.loads(plan_path)
+            else:
+                with open(plan_path, 'r') as f:
+                    manifest_data = json.load(f)
+
+            # FIX: Handle case where manifest is a list instead of a dict
+            if isinstance(manifest_data, list):
+                print("⚠️  Warning: Manifest root is a list. Wrapping it in a standard dictionary structure.")
+                manifest_data = {
+                    "implementation_plan": {
+                        "parallel_tasks": manifest_data
+                    }
+                }
 
             if not isinstance(manifest_data, dict):
                 print(f"❌ Error parsing implementation plan: Manifest root is not a JSON object, but {type(manifest_data)}")

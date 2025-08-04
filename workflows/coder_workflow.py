@@ -180,7 +180,7 @@ class CoderWorkflowAgent(BaseAgent):
             return
         
         # In dry run mode, just simulate the coding tasks
-        if config.DRY_RUN_MODE:
+        if config.EXECUTION_MODE == "dry_run":
             print("CODER WORKFLOW: [DRY_RUN] Simulating parallel coding tasks...")
             from google.adk.events import Event
             from google.genai.types import Content, Part
@@ -210,8 +210,21 @@ class CoderWorkflowAgent(BaseAgent):
                 # Parse tasks from manifest, expecting a specific structure
                 manifest_data = json.loads(manifest_content)
                 
+                # FIX: Handle case where manifest is a list instead of a dict
+                if isinstance(manifest_data, list):
+                    print("CODER WORKFLOW: ⚠️  Warning: Manifest root is a list. Wrapping it in a standard dictionary structure.")
+                    manifest_data = {
+                        "implementation_plan": {
+                            "parallel_tasks": manifest_data
+                        }
+                    }
+                
                 if not isinstance(manifest_data, dict):
                     print(f"CODER WORKFLOW: Error - Manifest at {manifest_path} is not a JSON object (dict), but a {type(manifest_data)}.")
+                    # SET FAILURE STATE to halt the parent workflow
+                    ctx.session.state['execution_status'] = 'critical_error'
+                    ctx.session.state['error_type'] = 'ManifestFormatError'
+                    ctx.session.state['error_details'] = f"Manifest root is a {type(manifest_data)}, expected a dict."
                     from google.adk.events import Event
                     from google.genai.types import Content, Part
                     yield Event(
@@ -247,8 +260,22 @@ class CoderWorkflowAgent(BaseAgent):
                     content=Content(parts=[Part(text=f"Manifest file not found: {manifest_path}")])
                 )
                 
+        except json.JSONDecodeError as e:
+            print(f"CODER WORKFLOW: Error decoding JSON from manifest: {e}")
+            ctx.session.state['execution_status'] = 'critical_error'
+            ctx.session.state['error_type'] = 'ManifestFormatError'
+            ctx.session.state['error_details'] = f"Could not decode JSON from {manifest_path}."
+            from google.adk.events import Event
+            from google.genai.types import Content, Part
+            yield Event(
+                author=self.name,
+                content=Content(parts=[Part(text=f"Error reading manifest: {e}")])
+            )
         except Exception as e:
             print(f"CODER WORKFLOW: Error reading manifest: {e}")
+            ctx.session.state['execution_status'] = 'critical_error'
+            ctx.session.state['error_type'] = 'ManifestReadError'
+            ctx.session.state['error_details'] = str(e)
             from google.adk.events import Event
             from google.genai.types import Content, Part
             yield Event(

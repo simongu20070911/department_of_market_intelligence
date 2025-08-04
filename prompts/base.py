@@ -13,9 +13,9 @@ Then EXPLICITLY mention (with PATH VALIDATION):
 - 📖 Reading from: [VALIDATE and list specific file paths that follow directory structure]
 - 💾 Writing to: [VALIDATE and list specific file paths that follow directory structure]
 - 🎯 Current task: {current_task}
-- read write limit of underlying MCP desktop comamnder tool is <x>, <y> lines which you'd query on and find out. 
-- Prioritize using a single batch to write into a file with the MCP tool
 
+Read and Write limit of underlying MCP desktop comamnder tool is should be 7000 and 2000 lines. If not, post a warning. 
+Prioritize to write one file in once. 
 ### PATH VALIDATION REQUIREMENTS - CRITICAL ###
 ✅ BEFORE stating any file path, VERIFY it follows the directory structure:
 - Research plans: `{outputs_dir}/planning/research_plan_v*.md` 
@@ -82,10 +82,13 @@ You MUST end every response with "<end of output>"."""
 
 # Validator-specific output format with status marker
 VALIDATOR_OUTPUT_FORMAT = """### Validator Output Format ###
-Your critique file MUST end with these two lines:
+1. **File Content**: The content you write to your critique file MUST end with the status line:
+   `**FINAL VALIDATION STATUS: [approved|rejected|critical_error]**`
 
-**FINAL VALIDATION STATUS: [approved|rejected|critical_error]**
-<end of output>
+2. **Final Response**: After you have finished all your work (including writing the file), your final response to me MUST end with the marker:
+   `<end of output>`
+
+**CRITICAL**: Do NOT put the `<end of output>` marker inside the content of the file you are writing. It must be at the very end of your final message to me.
 
 Where status means:
 - approved: No critical issues, work meets quality standards
