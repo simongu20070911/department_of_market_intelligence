@@ -518,8 +518,8 @@ class MetaValidatorCheckAgent(BaseAgent):
             should_escalate = False
             # Reset the validation status so that the loop can continue
             ctx.session.state["validation_status"] = None
-            # Set the task to 'refine_plan' for the next iteration
-            ctx.session.state["current_task"] = "refine_plan"
+            # Set the task back to initial plan generation for the Chief Researcher
+            ctx.session.state["current_task"] = "generate_initial_plan"
             # Increment the version for the refinement
             new_version = ctx.session.state.get("plan_version", 0) + 1
             ctx.session.state["plan_version"] = new_version
