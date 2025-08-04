@@ -29,8 +29,11 @@ class ExperimentWorkflowAgent(BaseAgent):
                 loop_name="ExecutorValidationLoop"
             )
 
-        ctx.session.state['artifact_to_validate'] = ctx.session.state['implementation_manifest_artifact']
+        # Set the context for experiment execution validation
+        ctx.session.state['validation_context'] = 'experiment_execution'
+        ctx.session.state['artifact_to_validate'] = ctx.session.state.get('execution_log_artifact') or ctx.session.state.get('implementation_manifest_artifact')
         ctx.session.state['validation_version'] = 0
+        
         async for event in self._executor_loop.run_async(ctx):
             yield event
         

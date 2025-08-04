@@ -145,21 +145,10 @@ class AgentContextPreloader:
                 if value:
                     result = result.replace(placeholder, str(value))
                 else:
-                    # Debug missing session state values and attempt fallback
-                    if placeholder == "{plan_artifact_name}":
-                        print(f"   🔍 Missing plan_artifact_name in session state")
-                        print(f"   📋 Available keys: {list(session_state.keys())}")
-                        # Try to find the research plan directly
-                        task_id = session_state.get("task_id") or config.TASK_ID or "sample_research_task"
-                        outputs_dir = session_state.get("outputs_dir") or config.get_outputs_dir(task_id)
-                        import glob
-                        plan_files = glob.glob(f"{outputs_dir}/planning/research_plan_v*.md")
-                        if plan_files:
-                            latest_plan = max(plan_files, key=lambda x: int(x.split('_v')[-1].split('.')[0]))
-                            print(f"   🔧 Found research plan directly: {latest_plan}")
-                            result = result.replace(placeholder, latest_plan)
-                        else:
-                            print(f"   ❌ No research plan found in {outputs_dir}/planning/")
+                    # Log missing state values but do not attempt to fall back.
+                    # This makes it clear that a state variable was expected but not provided.
+                    print(f"   🔍 Missing {placeholder.strip('{}')} in session state")
+                    print(f"   📋 Available keys: {list(session_state.keys())}")
         
         return result
     

@@ -252,13 +252,17 @@ class CheckpointManager:
             print(f"⚠️  Warning: No outputs snapshot found for {checkpoint_id}")
             return
         
+        # FIX: Get the raw path string to avoid the property's side-effect of creating the directory.
+        # This makes the rm/copy operation atomic and robust.
+        outputs_path_str = config.get_outputs_dir(self.task_id)
+
         try:
-            # Clear current outputs
-            if os.path.exists(self.outputs_dir):
-                shutil.rmtree(self.outputs_dir)
+            # Clear current outputs directory if it exists
+            if os.path.exists(outputs_path_str):
+                shutil.rmtree(outputs_path_str)
             
             # Restore from snapshot
-            shutil.copytree(snapshot_path, self.outputs_dir)
+            shutil.copytree(snapshot_path, outputs_path_str)
             print(f"📂 Outputs restored from checkpoint snapshot")
             
         except Exception as e:

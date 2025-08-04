@@ -107,6 +107,12 @@ def inject_template_variables(template: str, ctx, agent_name: str) -> str:
     # Get task file path
     task_file_path = f"{config.TASKS_DIR}/{task_id}.md"
     
+    # FIX: Explicitly get artifact_to_validate from session state
+    artifact_to_validate = session_state.get("artifact_to_validate") or "ARTIFACT_NOT_SET_IN_STATE"
+    
+    # Get validation context for validators
+    validation_context = session_state.get("validation_context") or "research_plan"
+    
     # Replace all template variables
     result = template
     replacements = {
@@ -118,6 +124,9 @@ def inject_template_variables(template: str, ctx, agent_name: str) -> str:
         "{task_id}": task_id,
         "{validation_version}": validation_version,
         "{task_file_path}": task_file_path,
+        # FIX: Add the artifact path to the replacement dictionary
+        "{artifact_to_validate}": artifact_to_validate,
+        "{validation_context}": validation_context,
     }
     
     for placeholder, value in replacements.items():

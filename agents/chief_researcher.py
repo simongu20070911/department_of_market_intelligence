@@ -6,13 +6,11 @@ from typing import Dict, Any, List, AsyncGenerator
 from google.adk.agents.llm_agent import LlmAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
-from google.genai import types
 
 from .. import config
 from ..utils.callbacks import ensure_end_of_output
 from ..utils.model_loader import get_llm_model
 from ..utils.operation_tracking import (
-    tracked_operation,
     create_file_generation_operation,
     OperationStep
 )
@@ -70,28 +68,28 @@ class MicroCheckpointChiefResearcher(LlmAgent):
         
         # Get task info from session state
         task_id = ctx.session.state.get('task_id', config.TASK_ID)
-        current_task = ctx.session.state.get('current_task', 'research_planning')
+        outputs_dir = config.get_outputs_dir(task_id)
         
         # Define research planning steps
         research_steps = [
             {
-                "filename": f"research_plan_v1.md",
+                "filename": f"{outputs_dir}/planning/research_plan_v{plan_version}.md",
                 "step_name": "Generate Initial Research Plan",
-                "description": "Create comprehensive research methodology and approach",
+                "description": "Create a comprehensive research methodology and approach based on the main task. This should be the core document.",
                 "timeout": 240,
                 "max_retries": 2
             },
             {
-                "filename": f"research_scope.md", 
+                "filename": f"{outputs_dir}/planning/research_scope_v{plan_version}.md", 
                 "step_name": "Define Research Scope",
-                "description": "Establish boundaries and limitations for the research",
+                "description": "Establish clear boundaries, limitations, and out-of-scope items for the research to ensure focus.",
                 "timeout": 180,
                 "max_retries": 2
             },
             {
-                "filename": f"methodology_validation.md",
-                "step_name": "Validate Research Methodology",
-                "description": "Review and validate the proposed research approach",
+                "filename": f"{outputs_dir}/planning/methodology_validation_plan_v{plan_version}.md",
+                "step_name": "Plan for Methodology Validation",
+                "description": "Outline the specific steps and criteria that will be used to review and validate the proposed research approach, including statistical tests and data hygiene checks.",
                 "timeout": 200,
                 "max_retries": 1
             }
@@ -133,8 +131,8 @@ class MicroCheckpointChiefResearcher(LlmAgent):
             # Mark this version of planning as complete before calling the LLM
             ctx.session.state[planning_executed_key] = True
             
-            # Run standard LLM agent to finalize research planning...
-            print("🤖 Running LLM agent to finalize research planning...")
+            # Run standard LLM agent to synthesize and finalize the research plan
+            print("🤖 Running LLM agent to synthesize and finalize research planning...")
             async for event in super()._run_async_impl(ctx):
                 yield event
     
@@ -187,26 +185,86 @@ class MicroCheckpointChiefResearcher(LlmAgent):
         
         if planning_results:
             await self._create_planning_summary(ctx, planning_results)
+
+        # FIX: Add a check to halt if the resumed operation has failed steps.
+        # This prevents the agent from proceeding with a broken state.
+        progress = micro_checkpoint_manager.operation_registry.get(operation_id)
+        if progress and progress.failed_steps:
+            print(f"❌ CRITICAL: Resumed operation '{operation_id}' has {len(progress.failed_steps)} failed steps. Halting.")
+            # Stop the generator, effectively halting this agent's execution.
+            return
+
+        # After resuming, run the final synthesis step
+        print("🤖 Running LLM agent to synthesize and finalize resumed research planning...")
+        async for event in super()._run_async_impl(ctx):
+            yield event
     
     async def _execute_planning_step(self, ctx: InvocationContext, step_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a single planning step with basic tracking."""
+        """Execute a single, real planning step by generating a file."""
+        from ..utils.task_loader import load_task_description
+        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        task_description = load_task_description(task_id)
+
+        prompt_template = f"""
+        You are the Chief Researcher. Your current high-level task is:
+        ---
+        {task_description}
+        ---
+        You are now performing one specific sub-step of the planning phase.
         
+        Sub-step Name: {step_config['step_name']}
+        Sub-step Goal: {step_config['description']}
+        
+        Generate the complete and detailed markdown content for the document: `{os.path.basename(step_config['filename'])}`.
+        Your response must ONLY be the raw markdown content for this file. Do not include any other commentary, greetings, or explanations.
+        """
+        return await self._execute_step_with_llm(ctx, step_config, prompt_template)
+
+    def _find_tool(self, tool_name: str):
+        """Finds a tool by name from the agent's tool list."""
+        for tool in self.tools:
+            # Check if it's a regular tool with a name attribute
+            if hasattr(tool, 'name') and tool.name == tool_name:
+                return tool
+            # Handle MCPToolset case
+            if hasattr(tool, 'get_tools'):
+                for mcp_tool in tool.get_tools():
+                    if mcp_tool.name.endswith(f"__{tool_name}"):
+                        return mcp_tool
+        raise ValueError(f"Tool '{tool_name}' not found in agent's toolset.")
+
+    async def _execute_step_with_llm(self, ctx: InvocationContext, step_config: Dict[str, Any], prompt: str) -> Dict[str, Any]:
+        """Generic helper to execute a step that generates a file via LLM."""
         step_name = step_config.get("step_name", "Unknown_Step")
         filename = step_config.get("filename", "unknown.md")
         
-        result = {
+        print(f"   🧠 Generating content for: {step_name}")
+        
+        # Generate content using LiteLLM's acompletion method
+        messages = [{"role": "user", "content": prompt}]
+        response = await self.model.acompletion(messages=messages)
+        
+        # Extract content from LiteLLM response
+        content_to_write = response.choices[0].message.content.strip()
+
+        # Clean up markdown code blocks if the model wraps the output
+        if content_to_write.startswith("```markdown"):
+            content_to_write = content_to_write.split('\n', 1)[1]
+            if content_to_write.endswith("```"):
+                content_to_write = content_to_write[:-3].strip()
+
+        # Write the content to the specified file using the agent's tool
+        print(f"   ✍️ Writing content to: {filename}")
+        write_tool = self._find_tool("write_file")
+        await write_tool.invoke(path=filename, content=content_to_write)
+
+        return {
             "step_name": step_name,
             "filename": filename,
             "status": "completed",
             "method": "micro_checkpoint_execution",
             "config": step_config
         }
-        
-        # Simulate planning step execution
-        # In practice, this would call tools to generate the actual file
-        print(f"   📝 Executing: {step_name}")
-        
-        return result
     
     async def _create_planning_summary(self, ctx: InvocationContext, results: List[Dict[str, Any]]):
         """Create a summary of all planning steps."""
@@ -268,4 +326,3 @@ def get_chief_researcher_agent():
     )
     
     return agent
-

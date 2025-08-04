@@ -13,7 +13,6 @@ from .. import config
 from ..utils.callbacks import ensure_end_of_output
 from ..utils.model_loader import get_llm_model
 from ..utils.operation_tracking import (
-    tracked_operation,
     create_experiment_operation,
     OperationStep
 )
@@ -197,6 +196,11 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
         
         if execution_results:
             await self._create_execution_summary(ctx, execution_results)
+
+        # After resuming, run the final synthesis step
+        print("🤖 Running LLM agent to analyze resumed execution results...")
+        async for event in super()._run_async_impl(ctx):
+            yield event
     
     async def _parse_implementation_plan(self, plan_path: str) -> List[Dict[str, Any]]:
         """Parse implementation plan from JSON manifest to extract experiment configurations."""
@@ -233,12 +237,12 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
             experiments = []
             for i, task in enumerate(tasks):
                 task_id = task.get("task_id", f"task_{i+1}")
+                # The Coder workflow should produce scripts in a predictable location
+                script_path = f"workspace/scripts/{task_id}.py"
                 experiments.append({
                     "name": task.get("description", f"Experiment for {task_id}"),
                     "type": "python_script",
-                    # Assuming a convention for script paths. This might need more robust logic
-                    # based on what the CoderWorkflow outputs.
-                    "code": f"python workspace/scripts/{task_id}.py",
+                    "code": f"python {script_path}",
                     "expected_outputs": task.get("outputs", []),
                     "timeout": 300,
                     "max_retries": 1
@@ -253,23 +257,54 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
             print(f"❌ Error parsing implementation plan: {e}")
             return []
     
+    def _find_tool(self, tool_name: str):
+        """Finds a tool by name from the agent's tool list."""
+        for tool in self.tools:
+            # Check if it's a regular tool with a name attribute
+            if hasattr(tool, 'name') and tool.name == tool_name:
+                return tool
+            if hasattr(tool, 'get_tools'):
+                for mcp_tool in tool.get_tools():
+                    if mcp_tool.name.endswith(f"__{tool_name}"):
+                        return mcp_tool
+        raise ValueError(f"Tool '{tool_name}' not found in agent's toolset.")
+
     async def _execute_single_experiment(self, ctx: InvocationContext, experiment_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a single experiment with basic tracking."""
+        """Execute a single experiment by running its script."""
         
         experiment_name = experiment_config.get("name", "Unknown_Experiment")
+        script_command = experiment_config.get("code") # e.g., "python workspace/scripts/task_1.py"
         
-        result = {
+        if not script_command:
+            raise ValueError(f"No 'code' command found in experiment config for '{experiment_name}'")
+
+        print(f"   🔬 Executing: {experiment_name} -> `{script_command}`")
+
+        # Find and invoke the terminal/script execution tool
+        # Note: The tool name might be 'run_script_in_terminal' or similar depending on MCP version
+        try:
+            exec_tool = self._find_tool("run_script_in_terminal")
+        except ValueError:
+            exec_tool = self._find_tool("execute_shell_command") # Fallback for different naming
+
+        tool_result = await exec_tool.invoke(command=script_command)
+        
+        print(f"   📊 Execution result for '{experiment_name}':\n{tool_result}")
+
+        # Check for errors in the tool output
+        status = "completed"
+        if isinstance(tool_result, str) and ("error" in tool_result.lower() or "failed" in tool_result.lower()):
+            status = "failed"
+            # Raise an exception to be caught by the step context, triggering retry logic if configured
+            raise RuntimeError(f"Execution of '{experiment_name}' failed: {tool_result}")
+
+        return {
             "experiment_name": experiment_name,
-            "status": "completed",
+            "status": status,
             "method": "micro_checkpoint_execution",
+            "output": tool_result,
             "config": experiment_config
         }
-        
-        # Simulate experiment execution
-        # In practice, this would call tools to run the actual experiment
-        print(f"   🔬 Executing: {experiment_name}")
-        
-        return result
     
     async def _create_execution_summary(self, ctx: InvocationContext, results: List[Dict[str, Any]]):
         """Create a summary of all experiment executions."""
@@ -330,4 +365,3 @@ def get_experiment_executor_agent():
     )
     
     return agent
-

@@ -12,7 +12,6 @@ from .. import config
 from ..utils.callbacks import ensure_end_of_output
 from ..utils.model_loader import get_llm_model
 from ..utils.operation_tracking import (
-    tracked_operation,
     create_data_processing_operation,
     OperationStep
 )
@@ -71,36 +70,32 @@ class MicroCheckpointOrchestrator(LlmAgent):
         
         # Get task info from session state
         task_id = ctx.session.state.get('task_id', config.TASK_ID)
-        current_task = ctx.session.state.get('current_task', 'orchestration')
+        outputs_dir = config.get_outputs_dir(task_id)
         
         # Define orchestration steps
         orchestration_steps = [
             {
+                "filename": f"{outputs_dir}/planning/parsed_requirements_v{validation_version}.json",
                 "name": "Parse Research Plan",
-                "description": "Parse and understand the research plan requirements",
-                "expected_outputs": ["parsed_requirements.json"],
+                "description": "Parse the approved research plan and extract key requirements, experiments, and success criteria into a structured JSON format.",
+                "expected_outputs": [f"parsed_requirements_v{validation_version}.json"],
                 "timeout": 180,
                 "max_retries": 2
             },
             {
+                "filename": f"{outputs_dir}/planning/implementation_strategy_v{validation_version}.md",
                 "name": "Generate Implementation Strategy",
-                "description": "Create detailed implementation strategy from research plan",
-                "expected_outputs": ["implementation_strategy.md"],
+                "description": "Create a detailed implementation strategy document that outlines how the research plan will be translated into parallelizable coding tasks.",
+                "expected_outputs": [f"implementation_strategy_v{validation_version}.md"],
                 "timeout": 240,
                 "max_retries": 2
             },
             {
+                "filename": f"{outputs_dir}/planning/execution_graph_v{validation_version}.json",
                 "name": "Create Execution Graph",
-                "description": "Generate parallel execution graph for experiments",
-                "expected_outputs": ["execution_graph.json"],
+                "description": "Generate a JSON representation of the task dependency graph for parallel execution, defining dependencies between coding tasks.",
+                "expected_outputs": [f"execution_graph_v{validation_version}.json"],
                 "timeout": 200,
-                "max_retries": 1
-            },
-            {
-                "name": "Validate Dependencies",
-                "description": "Validate all dependencies and prerequisites",
-                "expected_outputs": ["dependency_validation.json"],
-                "timeout": 150,
                 "max_retries": 1
             }
         ]
@@ -141,7 +136,7 @@ class MicroCheckpointOrchestrator(LlmAgent):
             # Mark orchestration as complete before calling the LLM
             ctx.session.state[orchestration_executed_key] = True
             
-            # Run standard LLM agent to finalize orchestration
+            # Run standard LLM agent to synthesize and finalize the implementation manifest
             print("🤖 Running LLM agent to finalize orchestration...")
             async for event in super()._run_async_impl(ctx):
                 yield event
@@ -195,13 +190,74 @@ class MicroCheckpointOrchestrator(LlmAgent):
         
         if orchestration_results:
             await self._create_orchestration_summary(ctx, orchestration_results)
+
+        # After resuming, run the final synthesis step
+        print("🤖 Running LLM agent to synthesize and finalize resumed orchestration...")
+        async for event in super()._run_async_impl(ctx):
+            yield event
     
     async def _execute_orchestration_step(self, ctx: InvocationContext, step_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a single orchestration step with basic tracking."""
+        """Execute a single, real orchestration step by generating a file."""
+        plan_path = ctx.session.state.get('plan_artifact_name')
+        if not plan_path or not os.path.exists(plan_path):
+            raise FileNotFoundError("Approved research plan artifact not found in session state.")
         
+        with open(plan_path, 'r') as f:
+            research_plan_content = f.read()
+
+        prompt_template = f"""
+        You are the Orchestrator. You have been given the following approved research plan:
+        ---
+        {research_plan_content}
+        ---
+        You are now performing one specific sub-step of the implementation planning phase.
+        
+        Sub-step Name: {step_config['name']}
+        Sub-step Goal: {step_config['description']}
+        
+        Generate the complete and detailed content for the document: `{os.path.basename(step_config['filename'])}`.
+        Your response must ONLY be the raw content for this file (e.g., JSON or Markdown). Do not include any other commentary.
+        """
+        # Use the generic helper to execute the step
+        return await self._execute_step_with_llm(ctx, step_config, prompt_template)
+
+    def _find_tool(self, tool_name: str):
+        """Finds a tool by name from the agent's tool list."""
+        for tool in self.tools:
+            # Check if it's a regular tool with a name attribute
+            if hasattr(tool, 'name') and tool.name == tool_name:
+                return tool
+            if hasattr(tool, 'get_tools'):
+                for mcp_tool in tool.get_tools():
+                    if mcp_tool.name.endswith(f"__{tool_name}"):
+                        return mcp_tool
+        raise ValueError(f"Tool '{tool_name}' not found in agent's toolset.")
+
+    async def _execute_step_with_llm(self, ctx: InvocationContext, step_config: Dict[str, Any], prompt: str) -> Dict[str, Any]:
+        """Generic helper to execute a step that generates a file via LLM."""
         step_name = step_config.get("name", "Unknown_Step")
+        filename = step_config.get("filename", step_config.get("expected_outputs", ["unknown.out"])[0])
         
-        result = {
+        print(f"   🧠 Generating content for: {step_name}")
+        
+        # Generate content using LiteLLM's acompletion method
+        messages = [{"role": "user", "content": prompt}]
+        response = await self.model.acompletion(messages=messages)
+        
+        # Extract content from LiteLLM response
+        content_to_write = response.choices[0].message.content.strip()
+
+        # Clean up code blocks if the model wraps the output
+        if content_to_write.startswith("```"):
+            content_to_write = content_to_write.split('\n', 1)[1]
+            if content_to_write.endswith("```"):
+                content_to_write = content_to_write[:-3].strip()
+
+        print(f"   ✍️ Writing content to: {filename}")
+        write_tool = self._find_tool("write_file")
+        await write_tool.invoke(path=filename, content=content_to_write)
+
+        return {
             "step_name": step_name,
             "description": step_config.get("description", ""),
             "status": "completed",
@@ -209,12 +265,6 @@ class MicroCheckpointOrchestrator(LlmAgent):
             "expected_outputs": step_config.get("expected_outputs", []),
             "config": step_config
         }
-        
-        # Simulate orchestration step execution
-        # In practice, this would call tools to perform the actual orchestration
-        print(f"   🎯 Executing: {step_name}")
-        
-        return result
     
     async def _create_orchestration_summary(self, ctx: InvocationContext, results: List[Dict[str, Any]]):
         """Create a summary of all orchestration steps."""
@@ -275,4 +325,3 @@ def get_orchestrator_agent():
     )
     
     return agent
-

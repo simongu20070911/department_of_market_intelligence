@@ -16,6 +16,11 @@ Then EXPLICITLY mention (with PATH VALIDATION):
 
 Read and Write limit of underlying MCP desktop comamnder tool is should be 7000 and 2000 lines. If not, post a warning. 
 Prioritize to write one file in once. 
+
+If you see an issue in the workflow, DO NOT CONTINUE. Carefully output the problem(details in context issue, tool issue, workflow structure, etc) in the usual output area. 
+
+
+
 ### PATH VALIDATION REQUIREMENTS - CRITICAL ###
 ✅ BEFORE stating any file path, VERIFY it follows the directory structure:
 - Research plans: `{outputs_dir}/planning/research_plan_v*.md` 

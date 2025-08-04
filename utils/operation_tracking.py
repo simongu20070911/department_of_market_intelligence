@@ -3,6 +3,7 @@
 
 import functools
 import inspect
+import time
 from typing import Callable, Any, Dict, List, Optional
 from contextlib import contextmanager
 
@@ -307,6 +308,3 @@ def print_recovery_status(task_id: str = None):
         print(f"\n🛠️  RECOVERY RECOMMENDATIONS:")
         for rec in report["recovery_recommendations"]:
             print(f"   • {rec['operation_id']}: {rec['issue']} → {rec['action']}")
-
-
-import time  # Add missing import

@@ -126,7 +126,7 @@ def get_senior_validator_agent():
     return agent
 
 
-def create_specialized_parallel_validator(validator_type: str, index: int) -> BaseAgent:
+def create_specialized_parallel_validator(validator_type: str, index: int, validation_context: str) -> BaseAgent:
     """Create a specialized validator for parallel validation based on context."""
     
     # Only use mock agent in actual dry_run mode with LLM skipping
@@ -235,8 +235,7 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
         }
     }
     
-    # Get the validation context from state (will be set by the workflow)
-    validation_context = "{validation_context?}"
+    # Use the provided validation_context to select the right configuration
     config_key = validation_context.split("_")[0] if validation_context else "research"
     
     validator_config = validator_configs.get(config_key, validator_configs["research_plan"])
@@ -245,11 +244,11 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
     instruction_template = f"""
         ### Persona ###
         You are a {validator_info['name']} for ULTRATHINK_QUANTITATIVEMarketAlpha parallel validation.
-        Today's date is: {{current_date?}}
+        Today's date is: {{current_date}}
 
         ### Context & State ###
         Artifact to validate: {{artifact_to_validate}}
-        Validation context: {{validation_context?}}
+        Validation context: {{validation_context}}
         Validation version: {{validation_version}}
 
         ### Specialized Focus ###
@@ -269,10 +268,9 @@ def create_specialized_parallel_validator(validator_type: str, index: int) -> Ba
         """
 
     def instruction_provider(ctx: ReadonlyContext) -> str:
-        # Use the actual task_id from the session (consistent with root workflow default)
-        task_id = ctx.state.get("task_id", config.TASK_ID)
-        outputs_dir = config.get_outputs_dir(task_id)
-        return instruction_template.replace("{outputs_dir}", outputs_dir)
+        from ..prompts.builder import inject_template_variables_with_context_preloading
+        agent_name = f"{validator_info['name']}_{index}"
+        return inject_template_variables_with_context_preloading(instruction_template, ctx, agent_name)
 
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
@@ -295,21 +293,22 @@ class ParallelFinalValidationAgent(BaseAgent):
         # Get validation context from state
         validation_context = ctx.session.state.get('validation_context', 'research_plan')
         
-        if self._parallel_validators is None:
-            validators = []
-            
-            # Create specialized validators based on context
-            for i in range(config.PARALLEL_VALIDATION_SAMPLES):
-                validator = create_specialized_parallel_validator(
-                    validator_type=self._get_validator_type(validation_context, i),
-                    index=i
-                )
-                validators.append(validator)
-            
-            self._parallel_validators = ParallelAgent(
-                name="ParallelValidatorGroup",
-                sub_agents=validators
+        # Always create new validators to avoid state leakage between loops
+        validators = []
+        
+        # Create specialized validators based on context
+        for i in range(config.PARALLEL_VALIDATION_SAMPLES):
+            validator = create_specialized_parallel_validator(
+                validator_type=self._get_validator_type(validation_context, i),
+                index=i,
+                validation_context=validation_context
             )
+            validators.append(validator)
+        
+        self._parallel_validators = ParallelAgent(
+            name="ParallelValidatorGroup",
+            sub_agents=validators
+        )
         
         print(f"PARALLEL VALIDATION: Running {config.PARALLEL_VALIDATION_SAMPLES} specialized validators for {validation_context}")
         
@@ -358,15 +357,12 @@ class ParallelFinalValidationAgent(BaseAgent):
         
         critical_issues = []
         validators_with_issues = []
+        validation_context = ctx.session.state.get('validation_context', 'research_plan')
         
-        # Check each parallel validator output
-        validator_types = ["statistical", "data", "market", "methodology", "general", 
-                          "parallelization", "interfaces", "alignment", "efficiency",
-                          "bugs", "performance", "integration", "statistics",
-                          "protocol", "completeness", "quality", "reproducibility",
-                          "coverage", "accuracy", "presentation", "insights"]
+        # Get the list of validator types that were actually run for this context
+        validator_types_to_check = [self._get_validator_type(validation_context, i) for i in range(config.PARALLEL_VALIDATION_SAMPLES)]
         
-        for validator_type in validator_types:
+        for validator_type in set(validator_types_to_check): # Use set to avoid duplicates
             output_file = os.path.join(outputs_dir, f"parallel_validation_{validator_type}_v{validation_version}.md")
             
             if os.path.exists(output_file):
@@ -381,17 +377,24 @@ class ParallelFinalValidationAgent(BaseAgent):
                         
                         # Extract specific issues (looking for bullet points or numbered items)
                         issue_patterns = [
-                            r'[-•]\s*(.+)',  # Bullet points
+                            r'[-•*]\s*(.+)',  # Bullet points
                             r'\d+\.\s*(.+)',  # Numbered lists
                             r'Issue:\s*(.+)',  # Explicit issue markers
                             r'Problem:\s*(.+)',  # Problem markers
                         ]
                         
+                        found_in_file = []
                         for pattern in issue_patterns:
                             matches = re.findall(pattern, content, re.MULTILINE)
                             for match in matches:
                                 if len(match.strip()) > 10:  # Filter out very short matches
-                                    critical_issues.append(f"[{validator_type}] {match.strip()}")
+                                    found_in_file.append(f"[{validator_type}] {match.strip()}")
+                        
+                        if not found_in_file:
+                            # If no specific patterns match, add the whole content as an issue
+                            critical_issues.append(f"[{validator_type}] General feedback: {content.strip()}")
+                        else:
+                            critical_issues.extend(found_in_file)
                 
                 except Exception as e:
                     print(f"Error reading {output_file}: {e}")
@@ -399,7 +402,7 @@ class ParallelFinalValidationAgent(BaseAgent):
         # Update session state based on findings
         if critical_issues:
             ctx.session.state['validation_status'] = 'critical_error'
-            print(f"PARALLEL VALIDATION: Found critical issues from validators: {', '.join(validators_with_issues)}")
+            print(f"PARALLEL VALIDATION: Found critical issues from validators: {', '.join(set(validators_with_issues))}")
         else:
             ctx.session.state['validation_status'] = 'approved'
             print("PARALLEL VALIDATION: No critical issues found by any validator")

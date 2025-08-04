@@ -172,23 +172,33 @@ class ValidationContextManager:
         current_phase = session_state.get('current_phase', '')
         artifact_path = session_state.get('artifact_to_validate', '')
         
+        context_type = "unknown"
+        confidence = 0.0
+
         # Direct context determination based on workflow phase and task
         # Order matters - check most specific first
-        if 'implementation_plan' in current_task or 'generate_implementation_plan' in current_task:
+        if 'implementation_plan' in current_task or 'generate_implementation_plan' in current_task or (current_phase == 'implementation' and 'orchestrator' in current_task.lower()):
             context_type = 'implementation_manifest'
+            confidence = 1.0
         elif 'results' in current_task or 'extraction' in current_task:
             context_type = 'results_extraction'
+            confidence = 1.0
         elif current_phase == 'planning' or 'plan' in current_task:
             context_type = 'research_plan'
+            confidence = 1.0
         elif current_phase == 'implementation' and 'code' in current_task:
             context_type = 'code_implementation'
+            confidence = 1.0
         elif current_phase == 'execution' or 'experiment' in current_task:
             context_type = 'experiment_execution'
-        else:
-            # Fallback to filename detection if needed
-            context_type, _ = cls.detect_validation_context(artifact_path)
+            confidence = 1.0
+        
+        # Fallback to filename detection if direct rules don't apply
+        if context_type == "unknown" and artifact_path:
+            context_type, confidence = cls.detect_validation_context(artifact_path)
         
         session_state['validation_context'] = context_type
+        session_state['validation_confidence'] = confidence # Set confidence for logging
         print(f"🎯 Validation Context: {context_type} (from {current_phase}/{current_task})")
         
         return session_state

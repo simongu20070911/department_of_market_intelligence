@@ -90,11 +90,14 @@ class CoderWorkflowAgent(BaseAgent):
         original_subtask = ctx.session.state.get('coder_subtask')
         original_artifact = ctx.session.state.get('artifact_to_validate')
         original_version = ctx.session.state.get('validation_version')
+        original_context = ctx.session.state.get('validation_context')
         
         try:
             ctx.session.state['coder_subtask'] = task
             ctx.session.state['artifact_to_validate'] = f"coder_output_{task['task_id']}"
             ctx.session.state['validation_version'] = 0
+            # Set the specific context for code validation
+            ctx.session.state['validation_context'] = 'code_implementation'
             
             if self._coder_validation_loop_template is None:
                  self._coder_validation_loop_template = create_validation_loop(
@@ -106,12 +109,11 @@ class CoderWorkflowAgent(BaseAgent):
             async for event in self._coder_validation_loop_template.run_async(ctx):
                 yield event
         finally:
-            if original_subtask is not None:
-                ctx.session.state['coder_subtask'] = original_subtask
-            if original_artifact is not None:
-                ctx.session.state['artifact_to_validate'] = original_artifact
-            if original_version is not None:
-                ctx.session.state['validation_version'] = original_version
+            # Restore original state
+            ctx.session.state['coder_subtask'] = original_subtask
+            ctx.session.state['artifact_to_validate'] = original_artifact
+            ctx.session.state['validation_version'] = original_version
+            ctx.session.state['validation_context'] = original_context
 
     async def _execute_parallel_coding_tasks(self, ctx: InvocationContext, tasks: list) -> AsyncGenerator[Event, None]:
         """Execute multiple coding tasks in parallel using ParallelAgent."""
@@ -145,21 +147,23 @@ class CoderWorkflowAgent(BaseAgent):
                 original_subtask = ctx.session.state.get('coder_subtask')
                 original_artifact = ctx.session.state.get('artifact_to_validate')
                 original_version = ctx.session.state.get('validation_version')
+                original_context = ctx.session.state.get('validation_context')
                 
                 try:
                     ctx.session.state['coder_subtask'] = self._task_data
                     ctx.session.state['artifact_to_validate'] = f"coder_output_{self._task_data['task_id']}"
                     ctx.session.state['validation_version'] = 0
+                    # Set the specific context for code validation
+                    ctx.session.state['validation_context'] = 'code_implementation'
                     
                     async for event in self._validation_loop.run_async(ctx):
                         yield event
                 finally:
-                    if original_subtask is not None:
-                        ctx.session.state['coder_subtask'] = original_subtask
-                    if original_artifact is not None:
-                        ctx.session.state['artifact_to_validate'] = original_artifact
-                    if original_version is not None:
-                        ctx.session.state['validation_version'] = original_version
+                    # Restore original state
+                    ctx.session.state['coder_subtask'] = original_subtask
+                    ctx.session.state['artifact_to_validate'] = original_artifact
+                    ctx.session.state['validation_version'] = original_version
+                    ctx.session.state['validation_context'] = original_context
         
         return TaskSpecificCoderAgent(task)
 
