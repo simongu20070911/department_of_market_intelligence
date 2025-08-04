@@ -17,15 +17,22 @@ class CheckpointManager:
     
     def __init__(self, task_id: str = None):
         self.task_id = task_id or config.TASK_ID
-        self.checkpoints_dir = config.get_checkpoints_dir(self.task_id)
-        self.outputs_dir = config.get_outputs_dir(self.task_id)
-        
-        # Ensure directories exist
-        os.makedirs(self.checkpoints_dir, exist_ok=True)
-        os.makedirs(self.outputs_dir, exist_ok=True)
-        
         self.current_checkpoint = None
         self.agent_execution_count = 0
+
+    @property
+    def checkpoints_dir(self) -> str:
+        """Get the checkpoints directory for the current task, ensuring it exists."""
+        path = config.get_checkpoints_dir(self.task_id)
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    @property
+    def outputs_dir(self) -> str:
+        """Get the outputs directory for the current task, ensuring it exists."""
+        path = config.get_outputs_dir(self.task_id)
+        os.makedirs(path, exist_ok=True)
+        return path
         
     def create_checkpoint(self, 
                          phase: str, 
@@ -40,12 +47,16 @@ class CheckpointManager:
         checkpoint_id = f"{phase}_{step}_{timestamp.replace(':', '-').replace('.', '-')}"
         
         # Use simple dict state following ADK patterns
-        if not isinstance(session_state, dict):
-            raise ValueError("session_state must be a simple dict following ADK patterns")
+        # The original `isinstance(session_state, dict)` check is too strict for the ADK StateProxy.
+        # We now rely on duck-typing, checking for dict-like behavior.
+        if not hasattr(session_state, 'keys') or not hasattr(session_state, 'get'):
+            raise ValueError("session_state must be a dict-like object with keys() and get() methods")
         
         # Create a clean copy of state with only serializable values
         state_dict = {}
-        for key, value in session_state.items():
+        # Iterate using .keys() and .get() for compatibility with ADK's StateProxy, which may not have .items().
+        for key in session_state.keys():
+            value = session_state.get(key)
             # Only store simple, serializable types
             if isinstance(value, (str, int, float, bool, list, dict, type(None))):
                 state_dict[key] = value

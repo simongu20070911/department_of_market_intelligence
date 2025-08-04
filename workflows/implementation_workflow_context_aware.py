@@ -70,8 +70,9 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         # --- Step 1: Orchestrator Planning ---
         implementation_manifest_path = ctx.session.state.get('implementation_manifest_artifact')
         # Check if an approved manifest already exists from a previous (or resumed) run
-        if implementation_manifest_path and os.path.exists(implementation_manifest_path) and ctx.session.state.get('validation_status') == 'approved':
-            print(f"✅ Found approved implementation manifest from previous run: {os.path.basename(implementation_manifest_path)}")
+        validation_status = ctx.session.state.get('validation_status', '')
+        if implementation_manifest_path and os.path.exists(implementation_manifest_path) and validation_status.startswith('approved'):
+            print(f"✅ Found approved implementation manifest (status: {validation_status}) from previous run: {os.path.basename(implementation_manifest_path)}")
             print("📋 Skipping orchestrator planning.")
             # Ensure the manifest path is correctly set for the next step
             ctx.session.state['artifact_to_validate'] = implementation_manifest_path

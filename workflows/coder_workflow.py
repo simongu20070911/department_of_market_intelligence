@@ -209,6 +209,17 @@ class CoderWorkflowAgent(BaseAgent):
                 
                 # Parse tasks from manifest, expecting a specific structure
                 manifest_data = json.loads(manifest_content)
+                
+                if not isinstance(manifest_data, dict):
+                    print(f"CODER WORKFLOW: Error - Manifest at {manifest_path} is not a JSON object (dict), but a {type(manifest_data)}.")
+                    from google.adk.events import Event
+                    from google.genai.types import Content, Part
+                    yield Event(
+                        author=self.name,
+                        content=Content(parts=[Part(text=f"Manifest file at {manifest_path} has incorrect format.")])
+                    )
+                    return
+
                 tasks = manifest_data.get("implementation_plan", {}).get("parallel_tasks", [])
                 
                 if not tasks:

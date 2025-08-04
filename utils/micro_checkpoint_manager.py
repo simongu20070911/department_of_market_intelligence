@@ -66,14 +66,19 @@ class MicroCheckpointManager:
     
     def __init__(self, task_id: str = None):
         self.task_id = task_id or config.TASK_ID
-        self.micro_checkpoints_dir = os.path.join(
+        self.operation_registry: Dict[str, OperationProgress] = {}
+        self.current_operation: Optional[str] = None
+
+    @property
+    def micro_checkpoints_dir(self) -> str:
+        """Get the micro-checkpoints directory for the current task, ensuring it exists."""
+        # Note: This path is nested inside the main task's checkpoint directory
+        path = os.path.join(
             config.get_checkpoints_dir(self.task_id), 
             "micro_checkpoints"
         )
-        os.makedirs(self.micro_checkpoints_dir, exist_ok=True)
-        
-        self.operation_registry: Dict[str, OperationProgress] = {}
-        self.current_operation: Optional[str] = None
+        os.makedirs(path, exist_ok=True)
+        return path
         
     def start_operation(self, 
                        operation_id: str,

@@ -42,6 +42,17 @@ class MicroCheckpointChiefResearcher(LlmAgent):
                 yield event
             return
         
+        # Use a unique key to track if this pre-planning has been done for the current task version
+        plan_version = ctx.session.state.get('plan_version', 0)
+        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        planning_executed_key = f"chief_researcher_planning_executed_v{plan_version}_for_{task_id}"
+
+        if ctx.session.state.get(planning_executed_key):
+            print("🔄 Micro-checkpoint planning already completed for this version. Running LLM agent directly.")
+            async for event in super()._run_async_impl(ctx):
+                yield event
+            return
+        
         # Check for resumable operations first
         recoverable_ops = micro_checkpoint_manager.list_recoverable_operations()
         researcher_ops = [op for op in recoverable_ops if "Chief_Researcher" in op.get("agent_name", "")]
@@ -119,7 +130,10 @@ class MicroCheckpointChiefResearcher(LlmAgent):
             # Create planning summary
             await self._create_planning_summary(ctx, planning_results)
             
-            # Run standard LLM agent to finalize planning
+            # Mark this version of planning as complete before calling the LLM
+            ctx.session.state[planning_executed_key] = True
+            
+            # Run standard LLM agent to finalize research planning...
             print("🤖 Running LLM agent to finalize research planning...")
             async for event in super()._run_async_impl(ctx):
                 yield event

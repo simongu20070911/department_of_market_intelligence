@@ -17,7 +17,6 @@ USE_OPENAI_FORMAT = os.getenv("USE_OPENAI_FORMAT", "true").lower() == "true"  # 
 # For custom endpoints that expect a specific key format
 CUSTOM_API_KEY = os.getenv("CUSTOM_API_KEY", "sk-7m-daily-token-x")
 
-"""
 # --- Model Configurations ---
 CHIEF_RESEARCHER_MODEL = "gemini-2.5-pro"
 ORCHESTRATOR_MODEL = "gemini-2.5-pro"
@@ -33,6 +32,7 @@ VALIDATOR_MODEL = "gemini-2.5-flash"
 CODER_MODEL = "gemini-2.5-flash"
 EXECUTOR_MODEL = "gemini-2.5-flash"
 
+"""
 
 # --- Workflow Control ---
 MAX_PLAN_REFINEMENT_LOOPS = 5

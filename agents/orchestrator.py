@@ -43,6 +43,17 @@ class MicroCheckpointOrchestrator(LlmAgent):
                 yield event
             return
         
+        # Use a unique key to track if this pre-orchestration has been done
+        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        validation_version = ctx.session.state.get('validation_version', 0)
+        orchestration_executed_key = f"orchestrator_planning_executed_v{validation_version}_for_{task_id}"
+
+        if ctx.session.state.get(orchestration_executed_key):
+            print("🔄 Micro-checkpoint orchestration already completed for this version. Running LLM agent directly.")
+            async for event in super()._run_async_impl(ctx):
+                yield event
+            return
+        
         # Check for resumable operations first
         recoverable_ops = micro_checkpoint_manager.list_recoverable_operations()
         orchestrator_ops = [op for op in recoverable_ops if "Orchestrator" in op.get("agent_name", "")]
@@ -126,6 +137,9 @@ class MicroCheckpointOrchestrator(LlmAgent):
             
             # Create orchestration summary
             await self._create_orchestration_summary(ctx, orchestration_results)
+            
+            # Mark orchestration as complete before calling the LLM
+            ctx.session.state[orchestration_executed_key] = True
             
             # Run standard LLM agent to finalize orchestration
             print("🤖 Running LLM agent to finalize orchestration...")

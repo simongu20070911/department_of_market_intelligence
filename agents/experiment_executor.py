@@ -43,6 +43,17 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
                 yield event
             return
         
+        # Use a unique key to track if this pre-execution has been done
+        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        validation_version = ctx.session.state.get('validation_version', 0)
+        execution_executed_key = f"executor_planning_executed_v{validation_version}_for_{task_id}"
+
+        if ctx.session.state.get(execution_executed_key):
+            print("🔄 Micro-checkpoint execution planning already completed for this version. Running LLM agent directly.")
+            async for event in super()._run_async_impl(ctx):
+                yield event
+            return
+        
         # Check for resumable operations first
         recoverable_ops = micro_checkpoint_manager.list_recoverable_operations()
         executor_ops = [op for op in recoverable_ops if "Experiment_Executor" in op.get("agent_name", "")]
@@ -59,7 +70,7 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
             return
         
         # Get implementation plan and task info from session state
-        implementation_plan_path = ctx.session.state.get('implementation_plan_artifact')
+        implementation_plan_path = ctx.session.state.get('implementation_manifest_artifact')
         task_id = ctx.session.state.get('task_id', config.TASK_ID)
         
         if not implementation_plan_path:
@@ -111,7 +122,10 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
             # Create execution summary
             await self._create_execution_summary(ctx, execution_results)
             
-            # Run standard LLM agent to process results
+            # Mark execution planning as complete before calling the LLM
+            ctx.session.state[execution_executed_key] = True
+            
+            # Run standard LLM agent to analyze execution results
             print("🤖 Running LLM agent to analyze execution results...")
             async for event in super()._run_async_impl(ctx):
                 yield event
@@ -167,44 +181,42 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
             await self._create_execution_summary(ctx, execution_results)
     
     async def _parse_implementation_plan(self, plan_path: str) -> List[Dict[str, Any]]:
-        """Parse implementation plan to extract experiment configurations."""
+        """Parse implementation plan from JSON manifest to extract experiment configurations."""
         try:
             with open(plan_path, 'r') as f:
-                plan_content = f.read()
-            
+                manifest_data = json.load(f)
+
+            if not isinstance(manifest_data, dict):
+                print(f"❌ Error parsing implementation plan: Manifest root is not a JSON object, but {type(manifest_data)}")
+                return []
+
+            implementation_plan = manifest_data.get("implementation_plan", {})
+            tasks = implementation_plan.get("parallel_tasks", [])
+
+            if not isinstance(tasks, list):
+                print(f"❌ Error parsing implementation plan: 'parallel_tasks' is not a list.")
+                return []
+
+            # Convert manifest tasks into experiment configurations
             experiments = []
-            
-            # Look for Python code blocks as experiments
-            if "```python" in plan_content:
-                code_blocks = []
-                lines = plan_content.split('\n')
-                in_code_block = False
-                current_block = []
-                
-                for line in lines:
-                    if line.strip().startswith("```python"):
-                        in_code_block = True
-                        current_block = []
-                    elif line.strip().startswith("```") and in_code_block:
-                        if current_block:
-                            code_blocks.append('\n'.join(current_block))
-                        in_code_block = False
-                    elif in_code_block:
-                        current_block.append(line)
-                
-                # Convert code blocks to experiment configs
-                for i, code in enumerate(code_blocks):
-                    experiments.append({
-                        "name": f"Experiment_{i+1}",
-                        "type": "python_script",
-                        "code": code,
-                        "expected_outputs": [f"experiment_{i+1}_results.json"],
-                        "timeout": 300,
-                        "max_retries": 1
-                    })
+            for i, task in enumerate(tasks):
+                task_id = task.get("task_id", f"task_{i+1}")
+                experiments.append({
+                    "name": task.get("description", f"Experiment for {task_id}"),
+                    "type": "python_script",
+                    # Assuming a convention for script paths. This might need more robust logic
+                    # based on what the CoderWorkflow outputs.
+                    "code": f"python workspace/scripts/{task_id}.py",
+                    "expected_outputs": task.get("outputs", []),
+                    "timeout": 300,
+                    "max_retries": 1
+                })
             
             return experiments
             
+        except json.JSONDecodeError as e:
+            print(f"❌ Error decoding JSON from implementation plan: {e}")
+            return []
         except Exception as e:
             print(f"❌ Error parsing implementation plan: {e}")
             return []

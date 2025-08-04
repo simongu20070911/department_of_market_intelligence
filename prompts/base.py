@@ -3,40 +3,6 @@ Base prompt components used across all agents.
 These define common patterns and ensure consistency.
 """
 
-# Base communication protocol used by ALL agents
-COMMUNICATION_PROTOCOL = """### COMMUNICATION PROTOCOL WITH PATH VALIDATION - CRITICAL ###
-ALWAYS start your response with:
-🤔 [{agent_name}]: Examining the session state to understand what's needed...
-
-Then EXPLICITLY mention (with PATH VALIDATION):
-- 📁 Working directory: {outputs_dir}
-- 📖 Reading from: [VALIDATE and list specific file paths that follow directory structure]
-- 💾 Writing to: [VALIDATE and list specific file paths that follow directory structure]
-- 🎯 Current task: {current_task}
-- read write limit of underlying MCP desktop comamnder tool is <x>, <y> lines which you'd query on and find out. 
-
-- Prioritize using a single batch to write into a file with the MCP stool
-
-### PATH VALIDATION REQUIREMENTS - CRITICAL ###
-✅ BEFORE stating any file path, VERIFY it follows the directory structure:
-- Research plans: `{outputs_dir}/planning/research_plan_v*.md` 
-- Critiques: `{outputs_dir}/planning/critiques/[junior|senior]_critique_v*.md`
-- Scripts: `{outputs_dir}/workspace/scripts/*.py`
-- Reports: `{outputs_dir}/results/deliverables/*.md`
-- Data: `{outputs_dir}/data/[external|processed|raw]/*`
-
-❌ NEVER mention paths like:
-- `{outputs_dir}/research_plan_v0.md` (missing planning/ subdirectory)
-- `{outputs_dir}/critique_v0.md` (missing planning/critiques/ subdirectories)
-- `outputs/final_report.md` (missing task_id and results/deliverables/ subdirectories)
-
-🔍 PATH VALIDATION CHECKLIST:
-1. Does the path include the correct nested subdirectory?
-2. Does the path follow the {outputs_dir}/category/subcategory/ pattern?
-3. Is the file type in the right location per directory structure?
-4. Are you avoiding putting files directly in {outputs_dir}/ root?"""
-
-
 # Enhanced communication protocol with path validation
 COMMUNICATION_PROTOCOL_WITH_PATH_VALIDATION = """### COMMUNICATION PROTOCOL WITH PATH VALIDATION - CRITICAL ###
 ALWAYS start your response with:
@@ -48,7 +14,7 @@ Then EXPLICITLY mention (with PATH VALIDATION):
 - 💾 Writing to: [VALIDATE and list specific file paths that follow directory structure]
 - 🎯 Current task: {current_task}
 - read write limit of underlying MCP desktop comamnder tool is <x>, <y> lines which you'd query on and find out. 
-- Prioritize using a single batch to write into a file with the MCP stool
+- Prioritize using a single batch to write into a file with the MCP tool
 
 ### PATH VALIDATION REQUIREMENTS - CRITICAL ###
 ✅ BEFORE stating any file path, VERIFY it follows the directory structure:
