@@ -26,7 +26,9 @@ Use your tools to explore the environment and understand:
     - A list of specific experiments to be conducted, including statistical tests to be used (e.g., t-tests, regression analysis, stationarity tests).
     - A list of required outputs, charts, and metrics needed to validate the hypothesis.
     - Proactively identify and include experiments for any potentially interesting secondary relationships observed in the problem description.
-2.  Use the `write_file` tool to save this plan to a new file. The full path MUST be `{outputs_dir}/planning/research_plan_v0.md`."""
+2.  CRITICAL: First ensure the directory exists by using `create_directory` for `{outputs_dir}/planning/` if needed.
+3.  Then use the `write_file` tool to save this plan to a new file. The full path MUST be `{outputs_dir}/planning/research_plan_v0.md`.
+4.  IMPORTANT: Make each tool call separately - do not attempt to make multiple tool calls in one response."""
 
 REFINE_PLAN_TASK = """### Task: 'refine_plan' ###
 If the current task is 'refine_plan':
@@ -37,6 +39,16 @@ If the current task is 'refine_plan':
 ### VALIDATION FEEDBACK ###
 {previous_critiques}
 
+### CRITICAL INSTRUCTIONS FOR ADDRESSING CRITIQUES ###
+**DO NOT ARGUE WITH THE VALIDATORS' FEEDBACK. YOUR ROLE IS TO IMPROVE THE PLAN BY DIRECTLY ADDRESSING EACH CRITIQUE.**
+
+- Accept all validator feedback as valid and constructive
+- Do not justify or defend previous choices that were critiqued
+- For each critique point, implement a concrete improvement in the revised plan
+- If a validator says something is missing, add it
+- If a validator says something needs clarification, clarify it
+- If a validator suggests a specific approach, adopt it unless technically impossible
+
 ### ENVIRONMENTAL REASSESSMENT ###
 Use your tools to check for any new data sources or workspace changes:
 - Check {outputs_dir}/data/ for new datasets
@@ -44,8 +56,9 @@ Use your tools to check for any new data sources or workspace changes:
 - Understand current data availability and constraints
 
 1.  The current plan version is: {plan_version?}
-2.  Based on the current research plan, validation feedback, and environmental reassessment, meticulously revise the plan to address every point in the critique, enhancing its rigor and clarity. The new plan must be a complete, standalone document.
-3.  Use `write_file` to save the new plan to `{outputs_dir}/planning/research_plan_v{plan_version?}.md`."""
+2.  Based on the current research plan, validation feedback, and environmental reassessment, meticulously revise the plan to address EVERY SINGLE POINT in the critique. Your revised plan must demonstrate that you have fully incorporated all feedback.
+3.  The new plan must be a complete, standalone document that shows clear improvements based on the validators' guidance.
+4.  Use `write_file` to save the new plan to `{outputs_dir}/planning/research_plan_v{plan_version?}.md`."""
 
 GENERATE_FINAL_REPORT_TASK = """### Task: 'generate_final_report' ###
 If the current task is 'generate_final_report':
@@ -147,7 +160,9 @@ SENIOR_VALIDATOR_CORE_TASK = """### ARTIFACT TO VALIDATE ###
 ### PREVIOUS SENIOR CRITIQUES ###
 {previous_senior_critiques}
 
-1. Review the artifact content and junior validator feedback provided above
+CRITICAL INSTRUCTION: All content above has been PRE-LOADED for your analysis. DO NOT use the read_file tool - analyze the content provided above.
+
+1. Review the artifact content and junior validator feedback PROVIDED ABOVE
 2. Apply deep, context-specific analysis based on the artifact type ({validation_context?}):
 
 {context_specific_prompt}"""
@@ -161,11 +176,16 @@ JUNIOR_VALIDATOR_OUTPUT_REQUIREMENTS = """- If you find critical issues, list th
 - END your critique file with: **FINAL VALIDATION STATUS: [approved|rejected|critical_error]**"""
 
 # Senior Validator Specific Tasks
-SENIOR_VALIDATOR_COMPREHENSIVE_ANALYSIS = """You have access to comprehensive context pre-loaded above. Use this context to:
-- Analyze the artifact within its full historical context
-- Consider relationships to previous work and validation feedback
-- Identify patterns and consistency across related artifacts
-- Build a complete understanding of the work's evolution and quality"""
+SENIOR_VALIDATOR_COMPREHENSIVE_ANALYSIS = """IMPORTANT: All necessary content has been PRE-LOADED in the sections above. DO NOT attempt to read files.
+
+You have access to comprehensive context pre-loaded above. Use this PRE-LOADED context to:
+- Analyze the artifact content provided in the "ARTIFACT TO VALIDATE" section
+- Review the junior validator's findings in the "JUNIOR VALIDATOR FEEDBACK" section
+- Consider the original goals from the "ORIGINAL RESEARCH PLAN" section
+- Learn from patterns in the "PREVIOUS SENIOR CRITIQUES" section
+- Build a complete understanding of the work's evolution and quality
+
+DO NOT use the read_file tool - everything you need is already loaded above."""
 
 SENIOR_VALIDATOR_SYNTHESIS = """1. Synthesize junior validator findings with your comprehensive analysis
 2. Write detailed critique to `{outputs_dir}/planning/critiques/senior_critique_v{validation_version}.md`
@@ -188,9 +208,14 @@ SENIOR_VALIDATOR_DECISION_CRITERIA = """- For 'approved': No critical issues, mi
 # Validator Restrictions
 VALIDATOR_RESTRICTIONS = """- You are a VALIDATOR only - you MUST NOT edit, modify, or rewrite the research plan
 - Your job is to CRITIQUE, not to fix or improve the original artifact
-- ONLY create critique files, NEVER modify the research plan itself"""
+- ONLY create critique files, NEVER modify the research plan itself
+- IMPORTANT: The artifact content and research plan are PRE-LOADED above - focus on analyzing them
+- You may use tools if you need to check additional context, but the main content is already provided"""
 
 SENIOR_VALIDATOR_RESTRICTIONS = """- You are a VALIDATOR only - you MUST NOT edit, modify, or rewrite the research plan
 - Your job is to CRITIQUE and APPROVE/REJECT, not to fix or improve the original artifact
 - ONLY create critique files, NEVER modify the research plan itself
-- If you identify issues, document them in your critique - do NOT fix them yourself"""
+- If you identify issues, document them in your critique - do NOT fix them yourself
+- CRITICAL: ALL NECESSARY CONTENT IS PRE-LOADED ABOVE - DO NOT USE read_file TOOL
+- The artifact content, junior critique, research plan, and previous critiques are ALREADY PROVIDED in the sections above
+- FOCUS on analyzing the pre-loaded content and writing your critique file ONLY"""

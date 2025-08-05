@@ -32,5 +32,5 @@ def get_llm_model(model_name: str):
         # Set other defaults for reliability.
         timeout=600,
         max_tokens=8192,
-        num_retries=1,
+        num_retries=3,  # Increased to retry on transient failures
     )

@@ -20,7 +20,8 @@ class AgentContextPreloader:
         "Chief_Researcher": {
             "task_description": "auto_load:{task_file_path}",
             "previous_critiques": "auto_load_directory:{outputs_dir}/planning/critiques/",
-            "existing_plans": "auto_load_latest:{outputs_dir}/planning/research_plan_v*.md"
+            "existing_plans": "auto_load_latest:{outputs_dir}/planning/research_plan_v*.md",
+            "research_plan": "auto_load_latest:{outputs_dir}/planning/research_plan_v*.md"
         },
         
         # Junior Validator: Fully pre-loaded (validation-focused, no exploration needed)

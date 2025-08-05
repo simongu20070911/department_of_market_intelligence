@@ -55,7 +55,11 @@ class MicroCheckpointChiefResearcher(LlmAgent):
         recoverable_ops = micro_checkpoint_manager.list_recoverable_operations()
         researcher_ops = [op for op in recoverable_ops if "Chief_Researcher" in op.get("agent_name", "")]
         
-        if researcher_ops and config.MICRO_CHECKPOINT_AUTO_RESUME:
+        # Check if we're in a revision scenario (refine_plan task)
+        current_task = ctx.session.state.get('current_task', 'generate_initial_plan')
+        
+        # Only resume operations if we're not starting a new revision
+        if researcher_ops and config.MICRO_CHECKPOINT_AUTO_RESUME and current_task != 'refine_plan':
             print(f"🔄 Found {len(researcher_ops)} recoverable research operations")
             for op in researcher_ops:
                 print(f"   • {op['operation_id']}: {op['progress']} steps completed")
@@ -64,6 +68,19 @@ class MicroCheckpointChiefResearcher(LlmAgent):
             for op_info in researcher_ops:
                 async for event in self._resume_operation(ctx, op_info):
                     yield event
+            return
+        elif current_task == 'refine_plan' and researcher_ops:
+            print(f"🔄 Found {len(researcher_ops)} previous research operations, but starting fresh for revision v{plan_version}")
+            # Clean up old failed operations since we're doing a revision
+            for op in researcher_ops:
+                micro_checkpoint_manager.mark_operation_complete(op['operation_id'])
+                print(f"   ✓ Cleaned up old operation: {op['operation_id']}")
+        
+        # For refine_plan task, skip micro-checkpoint planning and go directly to LLM
+        if current_task == 'refine_plan':
+            print(f"📝 Refining plan to version {plan_version} based on validation feedback")
+            async for event in super()._run_async_impl(ctx):
+                yield event
             return
         
         # Get task info from session state

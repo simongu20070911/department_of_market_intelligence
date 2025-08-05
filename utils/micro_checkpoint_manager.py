@@ -369,6 +369,43 @@ class MicroCheckpointManager:
             with open(operation_path, 'w') as f:
                 json.dump(operation_data, f, indent=2, default=str)
 
+    def mark_operation_complete(self, operation_id: str):
+        """Mark an operation as complete and remove it from the registry."""
+        if operation_id in self.operation_registry:
+            progress = self.operation_registry[operation_id]
+            progress.updated_at = datetime.now(timezone.utc).isoformat()
+            
+            # Mark all remaining steps as completed
+            operation_path = os.path.join(
+                self.micro_checkpoints_dir,
+                f"operation_{operation_id}.json"
+            )
+            
+            if os.path.exists(operation_path):
+                with open(operation_path, 'r') as f:
+                    operation_data = json.load(f)
+                
+                # Update progress to show all steps completed
+                steps_data = operation_data.get("steps", [])
+                all_step_ids = [step["step_id"] for step in steps_data]
+                progress.completed_steps = all_step_ids
+                progress.total_steps = len(all_step_ids)
+                
+                # Save final state
+                operation_data["progress"] = asdict(progress)
+                with open(operation_path, 'w') as f:
+                    json.dump(operation_data, f, indent=2, default=str)
+            
+            # Remove from active registry
+            del self.operation_registry[operation_id]
+            
+            if self.current_operation == operation_id:
+                self.current_operation = None
+            
+            print(f"✓ Marked operation complete: {operation_id}")
+        else:
+            print(f"⚠️  Operation not in registry: {operation_id}")
+
 
 # Global micro-checkpoint manager instance
 micro_checkpoint_manager = MicroCheckpointManager()

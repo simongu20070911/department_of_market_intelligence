@@ -13,9 +13,13 @@ Then EXPLICITLY mention (with PATH VALIDATION):
 - 📖 Reading from: [VALIDATE and list specific file paths that follow directory structure]
 - 💾 Writing to: [VALIDATE and list specific file paths that follow directory structure]
 - 🎯 Current task: {current_task}
+- a summary of what you are going to do and aiming to do
 
 Read and Write limit of underlying MCP desktop comamnder tool is should be 7000 and 2000 lines. If not, post a warning. 
 Prioritize to write one file in once. 
+Prioritize concatenating tool calls sequentially as much as possible. 
+ - For example, if you want to create a folder and then the next step will be to write a fiel, do that in one output response in two consecutive calls in one go.
+ - If after those tool calls your job is finished, after the tool call directly output the end fo output marker.  
 
 If you see an issue in the workflow, DO NOT CONTINUE. Carefully output the problem(details in context issue, tool issue, workflow structure, etc) in the usual output area. 
 

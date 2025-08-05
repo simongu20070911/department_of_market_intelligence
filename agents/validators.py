@@ -518,12 +518,30 @@ class MetaValidatorCheckAgent(BaseAgent):
             should_escalate = False
             # Reset the validation status so that the loop can continue
             ctx.session.state["validation_status"] = None
-            # Set the task back to initial plan generation for the Chief Researcher
-            ctx.session.state["current_task"] = "generate_initial_plan"
-            # Increment the version for the refinement
-            new_version = ctx.session.state.get("plan_version", 0) + 1
-            ctx.session.state["plan_version"] = new_version
-            ctx.session.state["validation_version"] = new_version
+            
+            # Determine the current phase to set the appropriate task
+            current_phase = ctx.session.state.get("current_phase", "planning")
+            
+            if current_phase == "planning":
+                # For planning phase, trigger refine_plan task (not generate_initial_plan)
+                # to ensure Chief Researcher creates a new version
+                ctx.session.state["current_task"] = "refine_plan"
+                
+                # Increment the version for the refinement
+                new_version = ctx.session.state.get("plan_version", 0) + 1
+                ctx.session.state["plan_version"] = new_version
+                ctx.session.state["validation_version"] = new_version
+                
+                # Update the artifact path for the new version
+                task_id = ctx.session.state.get('task_id', 'sample_research_task')
+                outputs_dir = f"/home/gaen/agents_gaen/department_of_market_intelligence/outputs/{task_id}"
+                ctx.session.state["artifact_to_validate"] = f"{outputs_dir}/planning/research_plan_v{new_version}.md"
+                
+                print(f"   Setting task to 'refine_plan' for version {new_version}")
+            else:
+                # For other phases, maintain original behavior
+                print(f"   Rejection in phase: {current_phase}")
+            
             # ** THE FIX: Clear the cache to get fresh validator instances for the next loop **
             clear_validator_cache()
         

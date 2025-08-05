@@ -75,10 +75,11 @@ else:
     litellm.set_verbose = False
     os.environ['LITELLM_LOG'] = 'ERROR'
 
-# Configure LiteLLM retries for server errors
-os.environ['LITELLM_NUM_RETRIES'] = '3'
+# Configure LiteLLM retries for ALL errors
+os.environ['LITELLM_NUM_RETRIES'] = '3'  # Retry up to 3 times
 os.environ['LITELLM_RETRY_STRATEGY'] = 'exponential_backoff'
-os.environ['LITELLM_RETRY_ON_STATUS_CODES'] = '429,500,502,503,504'
+# Remove status code restriction - retry on ALL errors
+# os.environ['LITELLM_RETRY_ON_STATUS_CODES'] = '429,500,502,503,504'
 
 async def initialize_toolset():
     """Initialize the appropriate toolset and register it globally."""

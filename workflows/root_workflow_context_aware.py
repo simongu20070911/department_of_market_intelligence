@@ -123,12 +123,25 @@ class RootWorkflowAgentContextAware(BaseAgent):
             async for event in self._planning_workflow.run_async(ctx):
                 yield event
             
-            print("✅ Research plan approved with context-aware validation!")
+            # Check validation status after planning workflow completes
+            validation_status = ctx.session.state.get('validation_status', 'unknown')
             
-            # Transition to next phase BEFORE creating checkpoint
-            ctx.session.state['current_phase'] = "implementation"
-            # Reset validation status for the next phase to avoid using stale state
-            ctx.session.state['validation_status'] = "pending"
+            if validation_status == "approved":
+                print("✅ Research plan approved with context-aware validation!")
+                
+                # Transition to next phase BEFORE creating checkpoint
+                ctx.session.state['current_phase'] = "implementation"
+                # Reset validation status for the next phase to avoid using stale state
+                ctx.session.state['validation_status'] = "pending"
+            elif validation_status == "critical_error":
+                print("❌ Research plan validation resulted in critical error - halting workflow")
+                ctx.session.state['execution_status'] = 'critical_error'
+                return  # Exit the workflow
+            else:
+                print(f"❌ Research plan validation failed with status: {validation_status}")
+                print("⚠️  Workflow cannot proceed without an approved research plan")
+                ctx.session.state['execution_status'] = 'validation_failed'
+                return  # Exit the workflow
             
             # Create checkpoint after planning (with updated phase)
             checkpoint_manager.create_checkpoint(
@@ -205,36 +218,66 @@ class RootWorkflowAgentContextAware(BaseAgent):
             async for event in self._chief_researcher.run_async(ctx):
                 yield event
         
-        # Final checkpoint
-        final_report_path = ctx.session.state.get('final_report_artifact')
-        checkpoint_manager.create_checkpoint(
-            phase="final_report",
-            step="complete",
-            session_state=ctx.session.state,
-            metadata={
-                "final_report": final_report_path,
-                "workflow_complete": True,
-                "micro_checkpoints_used": config.ENABLE_MICRO_CHECKPOINTS
-            }
-        )
+        # Check the final execution status
+        execution_status = ctx.session.state.get('execution_status', 'unknown')
+        current_phase = ctx.session.state.get('current_phase', 'unknown')
         
-        # Cleanup micro-checkpoints if enabled
-        if config.ENABLE_MICRO_CHECKPOINTS:
-            print("🧹 Cleaning up completed micro-operations...")
-            micro_checkpoint_manager.cleanup_completed_operations(
-                keep_days=config.MICRO_CHECKPOINT_CLEANUP_DAYS
+        # Only mark as complete if we successfully finished all phases
+        if current_phase == "final_report" and execution_status != 'critical_error':
+            # Final checkpoint
+            final_report_path = ctx.session.state.get('final_report_artifact')
+            checkpoint_manager.create_checkpoint(
+                phase="final_report",
+                step="complete",
+                session_state=ctx.session.state,
+                metadata={
+                    "final_report": final_report_path,
+                    "workflow_complete": True,
+                    "micro_checkpoints_used": config.ENABLE_MICRO_CHECKPOINTS
+                }
             )
             
-            # Show final micro-checkpoint summary
-            recoverable_ops = micro_checkpoint_manager.list_recoverable_operations()
-            if recoverable_ops:
-                print(f"⚠️  {len(recoverable_ops)} micro-operations still recoverable")
+            # Cleanup micro-checkpoints if enabled
+            if config.ENABLE_MICRO_CHECKPOINTS:
+                print("🧹 Cleaning up completed micro-operations...")
+                micro_checkpoint_manager.cleanup_completed_operations(
+                    keep_days=config.MICRO_CHECKPOINT_CLEANUP_DAYS
+                )
+                
+                # Show final micro-checkpoint summary
+                recoverable_ops = micro_checkpoint_manager.list_recoverable_operations()
+                if recoverable_ops:
+                    print(f"⚠️  {len(recoverable_ops)} micro-operations still recoverable")
+                else:
+                    print("✅ All micro-operations completed successfully")
+            
+            print("\n✅ CONTEXT-AWARE RESEARCH WORKFLOW COMPLETE!")
+            print(f"📊 Final report: {final_report_path}")
+            print(f"🔍 All validations performed with context awareness")
+        else:
+            # Workflow did not complete successfully
+            print("\n❌ CONTEXT-AWARE RESEARCH WORKFLOW FAILED TO COMPLETE")
+            print(f"📊 Final phase reached: {current_phase}")
+            print(f"📊 Execution status: {execution_status}")
+            
+            if execution_status == 'critical_error':
+                print("⚠️  Workflow halted due to critical validation error")
+            elif execution_status == 'validation_failed':
+                print("⚠️  Workflow halted due to validation failure")
             else:
-                print("✅ All micro-operations completed successfully")
-        
-        print("\n✅ CONTEXT-AWARE RESEARCH WORKFLOW COMPLETE!")
-        print(f"📊 Final report: {final_report_path}")
-        print(f"🔍 All validations performed with context awareness")
+                print("⚠️  Workflow ended prematurely")
+                
+            # Save failure checkpoint for debugging
+            checkpoint_manager.create_checkpoint(
+                phase=current_phase,
+                step="failed",
+                session_state=ctx.session.state,
+                metadata={
+                    "workflow_complete": False,
+                    "failure_reason": execution_status,
+                    "micro_checkpoints_used": config.ENABLE_MICRO_CHECKPOINTS
+                }
+            )
         
         # Show comprehensive dry run summary if in dry run mode
         if config.DRY_RUN_MODE and config.DRY_RUN_COMPREHENSIVE_PATH_TESTING:

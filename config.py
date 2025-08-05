@@ -31,8 +31,8 @@ ORCHESTRATOR_MODEL = "gemini-2.5-flash"
 VALIDATOR_MODEL = "gemini-2.5-flash"
 CODER_MODEL = "gemini-2.5-flash"
 EXECUTOR_MODEL = "gemini-2.5-flash"
-
 """
+
 
 # --- Workflow Control ---
 MAX_PLAN_REFINEMENT_LOOPS = 5
@@ -46,7 +46,7 @@ MAX_IMPLEMENTATION_ATTEMPTS = 3  # Max attempts for implementation phase on crit
 # If True, allows workflow to continue when implementation manifest validation fails after max retries
 # If False, workflow will fail with critical_error when validation fails (original behavior)
 IMPLEMENTATION_MANIFEST_VALIDATION_ALLOW_PASS_ON_MAX_RETRIES = os.getenv(
-    "IMPLEMENTATION_MANIFEST_VALIDATION_ALLOW_PASS_ON_MAX_RETRIES", "true"
+    "IMPLEMENTATION_MANIFEST_VALIDATION_ALLOW_PASS_ON_MAX_RETRIES", "false"
 ).lower() == "true"
 
 # --- Context Pre-Loading System ---
@@ -110,7 +110,7 @@ OUTPUTS_DIR = os.path.join(_BASE_DIR, "outputs", TASK_ID)
 CHECKPOINTS_DIR = os.path.join(_BASE_DIR, "checkpoints", TASK_ID)
 
 # --- Logging Configuration ---
-VERBOSE_LOGGING = False  # Set to True for detailed debug output, False for cleaner output
+VERBOSE_LOGGING = True  # Set to True for detailed debug output, False for cleaner output
 
 # --- Execution Modes ---
 STREAMING_ENABLED = True # Set to True to stream the thinking process of the agents
