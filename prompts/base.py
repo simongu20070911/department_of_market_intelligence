@@ -21,7 +21,45 @@ Prioritize concatenating tool calls sequentially as much as possible.
  - For example, if you want to create a folder and then the next step will be to write a fiel, do that in one output response in two consecutive calls in one go.
  - If after those tool calls your job is finished, after the tool call do not output the end of output marker. You must wait for the next turn, where you check if your job is done. 
 
-If you see an issue in the workflow, DO NOT CONTINUE. Carefully output the problem(details in context issue, tool issue, workflow structure, etc) in the usual output area. 
+### WORKFLOW ERROR DETECTION - CRITICAL FOR PIPELINE HEALTH ###
+
+**WHEN TO STOP THE PIPELINE:**
+Use 🚨 CRITICAL_WORKFLOW_ERROR when you CANNOT complete your task due to:
+1. Missing files you need to read (e.g., research plan, manifest, task description)
+2. Corrupted data that cannot be parsed (e.g., invalid JSON, malformed files)
+3. Tool failures that prevent core operations (e.g., cannot read/write files)
+4. Invalid or missing session state (e.g., no task_id, no artifact path)
+5. Circular dependencies or logical impossibilities
+
+**HOW TO SIGNAL ERRORS (EXACT FORMAT):**
+Start a new line with the marker, then describe the specific problem:
+
+🚨 CRITICAL_WORKFLOW_ERROR: [specific issue] - [why you cannot continue]
+❌ WORKFLOW_ERROR: [problem description] - [impact on results]
+⚠️ WORKFLOW_WARNING: [minor issue] - [what default/workaround is being used]
+
+**REAL EXAMPLES FROM YOUR WORKFLOW:**
+
+Example 1 - File doesn't exist:
+🚨 CRITICAL_WORKFLOW_ERROR: Research plan not found at /outputs/planning/research_plan_v1.md - cannot validate non-existent artifact
+
+Example 2 - Invalid data:
+🚨 CRITICAL_WORKFLOW_ERROR: Implementation manifest JSON is corrupted at line 23 - cannot parse task dependencies
+
+Example 3 - Tool failure:
+🚨 CRITICAL_WORKFLOW_ERROR: Desktop Commander read_file failed after 3 retries - cannot access required data
+
+Example 4 - Missing state:
+🚨 CRITICAL_WORKFLOW_ERROR: Session state missing 'artifact_to_validate' - don't know what file to validate
+
+Example 5 - Using defaults (warning only):
+⚠️ WORKFLOW_WARNING: No temperature specified for LLM - using default 0.7
+
+**DECISION RULE:**
+Can you complete your core task despite this issue?
+- NO → 🚨 CRITICAL_WORKFLOW_ERROR (pipeline stops)
+- YES but degraded → ❌ WORKFLOW_ERROR (pipeline continues)
+- YES with minor adjustment → ⚠️ WORKFLOW_WARNING (pipeline continues) 
 
 
 

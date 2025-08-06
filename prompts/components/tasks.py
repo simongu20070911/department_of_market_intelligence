@@ -156,6 +156,7 @@ If `state['current_task']` is 'generate_results_extraction_plan':
 # Executor Tasks
 EXECUTE_EXPERIMENTS_TASK = """### Task ###
 1.  Read the implementation manifest from `state['implementation_manifest_artifact']`.
+    - If manifest doesn't exist: 🚨 CRITICAL_WORKFLOW_ERROR: Implementation manifest not found at [path] - cannot execute experiments without knowing what to run
 2.  Execute the scripts in the correct order based on their dependencies. Use the `start_process` tool to run each Python script.
 3.  Keep a detailed journal of every command you run, its output, and any errors encountered.
 4.  If a script fails with a critical, unrecoverable error that indicates a flaw in the code's logic (NOT a transient issue like a network timeout):
@@ -165,7 +166,14 @@ EXECUTE_EXPERIMENTS_TASK = """### Task ###
     d. STOP further execution.
 5.  If all scripts execute successfully:
     a. Write your complete journal to an artifact named `outputs/execution_journal.md`.
-    b. Set the session state: `state['execution_status'] = 'success'`."""
+    b. Set the session state: `state['execution_status'] = 'success'`.
+
+### WORKFLOW ERROR EXAMPLES FOR THIS TASK ###
+- Manifest file missing: 🚨 CRITICAL_WORKFLOW_ERROR: Implementation manifest not found at /outputs/planning/implementation_manifest.json - cannot determine experiments to execute
+- Manifest corrupted: 🚨 CRITICAL_WORKFLOW_ERROR: Implementation manifest JSON is invalid at line 15 - cannot parse experiment definitions
+- Tool failure: 🚨 CRITICAL_WORKFLOW_ERROR: Desktop Commander start_process failed - cannot execute Python scripts
+- Missing dependency: ❌ WORKFLOW_ERROR: Script dependency 'pandas' not installed - experiment may fail
+- Long runtime: ⚠️ WORKFLOW_WARNING: Experiment taking 10x longer than estimated - may timeout"""
 
 # Validator Tasks
 JUNIOR_VALIDATOR_CORE_TASK = """### ARTIFACT TO VALIDATE ###

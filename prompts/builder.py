@@ -97,9 +97,16 @@ def inject_template_variables(template: str, ctx, agent_name: str) -> str:
     # Get basic variables from context and config, ensuring no None values
     task_id = session_state.get("task_id") or config.TASK_ID
     outputs_dir = config.get_outputs_dir(task_id)
-    # Removed the dangerous fallback that hides the real issue.
-    # This makes it clear if the state is not being set correctly.
-    current_task = session_state.get("current_task") or "TASK_NOT_SET_IN_STATE"
+    
+    # For validators, show their actual validation task instead of the workflow task
+    # Validators shouldn't see "generate_initial_plan" when they're validating
+    if "validator" in agent_name.lower():
+        validation_context = session_state.get("validation_context") or "research_plan"
+        current_task = f"validate_{validation_context}"
+    else:
+        # Keep the exact task name for non-validator agents - they need the precise task identifier
+        # to trigger correct behavior branches in their prompts
+        current_task = session_state.get("current_task") or "TASK_NOT_SET_IN_STATE"
     current_date = datetime.now().strftime("%Y-%m-%d")
     current_year = str(datetime.now().year)
     validation_version = str(session_state.get("validation_version") or 0)

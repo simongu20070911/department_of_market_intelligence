@@ -272,34 +272,51 @@ Execution phase completed successfully with no experiments to run.
                 return []
 
             # Convert manifest tasks into experiment configurations
-            # Filter for execution tasks (not writing/setup tasks)
+            # Include all tasks that involve data processing or computation
+            # Expanded keyword list to catch more experiment types
+            execution_keywords = [
+                'run', 'aggregate', 'analyze', 'compile', 'simulation', 
+                'analysis', 'processing', 'compute', 'calculate', 'generate',
+                'execute', 'evaluation', 'test', 'experiment', 'visualization',
+                'visualizations', 'chart', 'plot', 'graph', 'data'
+            ]
+            
             execution_tasks = [t for t in tasks if any(keyword in t.get('task_id', '').lower() 
-                for keyword in ['run', 'aggregate', 'analyze', 'compile'])]
+                for keyword in execution_keywords)]
             
             experiments = []
             for i, task in enumerate(execution_tasks):
                 task_id = task.get("task_id", f"task_{i+1}")
                 
                 # Determine the type of task and appropriate script/arguments
-                script_path = "workspace/scripts/analysis_v2.py"
+                # Use task_id to generate script name
+                script_path = f"workspace/scripts/{task_id}.py"
                 
-                if 'run_simulation' in task_id:
-                    # Simulation task - extract ID and run with --simulation-id flag
-                    sim_id = task_id.split('_')[-1] if '_' in task_id else str(i+1)
-                    arguments = f"--simulation-id {sim_id}"
-                elif 'aggregate' in task_id:
+                # Build arguments based on task structure
+                arguments = ""
+                
+                # Special handling for known task patterns
+                if 'simulation' in task_id.lower():
+                    # Simulation tasks may need special flags
+                    if 'data_simulation' == task_id:
+                        # Main data simulation task
+                        arguments = "--trials 10 --samples 10000"
+                    else:
+                        # Other simulation tasks
+                        sim_id = task_id.split('_')[-1] if '_' in task_id else str(i+1)
+                        arguments = f"--simulation-id {sim_id}"
+                elif 'aggregate' in task_id.lower():
                     # Aggregation task - run with --aggregate flag
                     arguments = "--aggregate"
-                elif 'analyze' in task_id:
-                    # Analysis task - run with --analyze flag
-                    arguments = "--analyze"
-                elif 'compile' in task_id:
+                elif 'statistical_analysis' == task_id:
+                    # Statistical analysis task
+                    arguments = "--input simulation_results.csv --output statistical_results.json"
+                elif 'visualizations' == task_id:
+                    # Visualization generation task
+                    arguments = "--input simulation_results.csv --generate-charts"
+                elif 'report' in task_id.lower() or 'compile' in task_id.lower():
                     # Report compilation - might be a separate script or manual task
                     continue  # Skip for now, handle in results phase
-                else:
-                    # Regular script execution task - use different script path
-                    script_path = f"workspace/scripts/{task_id}.py"
-                    arguments = ""
                 
                 experiments.append({
                     "name": task.get("description", f"Task: {task_id}"),
