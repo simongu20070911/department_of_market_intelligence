@@ -175,14 +175,105 @@ def get_context_aware_research_planning_workflow():
     # A final check to ensure the status is correctly propagated after parallel validation
     final_status_check = MetaValidatorCheckAgent(name="FinalStatusCheck")
 
-    # Complete workflow: loop + parallel validation + final check
-    complete_planning_workflow = SequentialAgent(
-        name="CompletePlanningWorkflow",
-        sub_agents=[
-            planning_loop,
-            parallel_validation,
-            final_status_check
-        ]
+    # Create a wrapper that handles parallel validation feedback
+    class ParallelValidationFeedbackLoop(BaseAgent):
+        """Wrapper that feeds parallel validation results back to planning loop."""
+        
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            # Store as a private attribute with underscore prefix
+            self._max_parallel_iterations = 3
+        
+        async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+            for iteration in range(self._max_parallel_iterations):
+                print(f"\n🔄 Parallel validation feedback iteration {iteration + 1}/{self._max_parallel_iterations}")
+                
+                # Run the planning loop
+                async for event in planning_loop.run_async(ctx):
+                    yield event
+                
+                # Run parallel validation
+                async for event in parallel_validation.run_async(ctx):
+                    yield event
+                
+                # Check parallel validation results
+                validation_status = ctx.session.state.get('validation_status', '')
+                consolidated_issues = ctx.session.state.get('consolidated_validation_issues', [])
+                
+                if validation_status == 'critical_error' and consolidated_issues:
+                    print(f"\n⚠️  Parallel validation found {len(consolidated_issues)} critical issues")
+                    
+                    # Save consolidated issues to a file for Chief Researcher to read
+                    task_id = ctx.session.state.get("task_id") or config.TASK_ID
+                    outputs_dir = config.get_outputs_dir(task_id)
+                    critiques_dir = f"{outputs_dir}/planning/critiques"
+                    
+                    # Create critiques directory if it doesn't exist
+                    import os
+                    os.makedirs(critiques_dir, exist_ok=True)
+                    
+                    # Write parallel validation feedback
+                    parallel_feedback_path = f"{critiques_dir}/parallel_validation_feedback.md"
+                    with open(parallel_feedback_path, 'w') as f:
+                        f.write("# Parallel Validation Critical Issues\n\n")
+                        f.write(f"Found {len(consolidated_issues)} critical issues from specialized validators:\n\n")
+                        
+                        # Group issues by validator type (issues are strings like "[validator_type] issue text")
+                        issues_by_type = {}
+                        for issue_str in consolidated_issues:
+                            # Parse the validator type from the string format "[validator_type] issue text"
+                            if isinstance(issue_str, str) and issue_str.startswith('['):
+                                end_bracket = issue_str.find(']')
+                                if end_bracket > 0:
+                                    validator_type = issue_str[1:end_bracket]
+                                    issue_text = issue_str[end_bracket+1:].strip()
+                                else:
+                                    validator_type = "Unknown"
+                                    issue_text = issue_str
+                            else:
+                                validator_type = "Unknown"
+                                issue_text = str(issue_str)
+                            
+                            if validator_type not in issues_by_type:
+                                issues_by_type[validator_type] = []
+                            issues_by_type[validator_type].append(issue_text)
+                        
+                        for validator_type, issues in issues_by_type.items():
+                            f.write(f"## {validator_type} Issues\n\n")
+                            for i, issue in enumerate(issues, 1):
+                                f.write(f"{i}. {issue}\n")
+                            f.write("\n")
+                    
+                    print(f"📝 Saved parallel validation feedback to {parallel_feedback_path}")
+                    
+                    # Reset validation status for next iteration
+                    ctx.session.state['validation_status'] = 'needs_revision'
+                    ctx.session.state['validation_context'] = 'research_plan'
+                    
+                    # Continue to next iteration if not at max
+                    if iteration < self._max_parallel_iterations - 1:
+                        print("♻️  Re-running planning loop with parallel validation feedback...")
+                        continue
+                    else:
+                        print("❌ Max parallel validation iterations reached")
+                        break
+                else:
+                    # Validation passed or no critical issues
+                    print("✅ Parallel validation passed or no critical issues found")
+                    break
+            
+            # Run final status check
+            async for event in final_status_check.run_async(ctx):
+                yield event
+            
+            yield Event(
+                author=self.name,
+                actions=EventActions()
+            )
+    
+    # Use the feedback loop wrapper
+    complete_planning_workflow = ParallelValidationFeedbackLoop(
+        name="CompletePlanningWorkflowWithFeedback"
     )
     
     return complete_planning_workflow

@@ -21,7 +21,7 @@ from ..components.tasks import (
 )
 
 
-def build_junior_validator_instruction(context_type: str = None) -> str:
+def build_junior_validator_instruction(context_type: str = None, task_description: str = "") -> str:
     """Build junior validator instruction with optional context-specific prompt."""
     builder = (
         PromptBuilder()
@@ -40,16 +40,19 @@ def build_junior_validator_instruction(context_type: str = None) -> str:
         .add_validator_output_format()
     )
     
+    instruction = builder.build()
     if context_type:
         # Replace context placeholder with specific prompt
-        instruction = builder.build()
         context_prompt = JUNIOR_VALIDATION_PROMPTS.get(context_type, "")
-        return instruction.replace("{context_specific_prompt}", context_prompt)
+        instruction = instruction.replace("{context_specific_prompt}", context_prompt)
+
+    if task_description:
+        instruction = instruction.replace("{task_description}", task_description)
     
-    return builder.build()
+    return instruction
 
 
-def build_senior_validator_instruction(context_type: str = None) -> str:
+def build_senior_validator_instruction(context_type: str = None, task_description: str = "") -> str:
     """Build senior validator instruction with optional context-specific prompt."""
     builder = (
         PromptBuilder()
@@ -72,13 +75,16 @@ def build_senior_validator_instruction(context_type: str = None) -> str:
         .add_validator_output_format()
     )
     
+    instruction = builder.build()
     if context_type:
         # Replace context placeholder with specific prompt
-        instruction = builder.build()
         context_prompt = SENIOR_VALIDATION_PROMPTS.get(context_type, "")
-        return instruction.replace("{context_specific_prompt}", context_prompt)
+        instruction = instruction.replace("{context_specific_prompt}", context_prompt)
+
+    if task_description:
+        instruction = instruction.replace("{task_description}", task_description)
     
-    return builder.build()
+    return instruction
 
 
 # Template instructions for use with instruction providers

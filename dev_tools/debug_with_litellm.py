@@ -23,7 +23,7 @@ async def debug_with_litellm():
     print("=" * 50)
     
     # Enable LiteLLM debug mode
-    litellm.set_verbose = True
+    os.environ['LITELLM_LOG'] = 'DEBUG'
     litellm._turn_on_debug()
     
     print("✅ LiteLLM debug mode enabled - you'll see all HTTP requests now")

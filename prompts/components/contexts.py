@@ -24,12 +24,14 @@ CODER_CONTEXT = """- Your specific task is defined in the state dictionary `stat
 - If this is a refinement iteration, the critique will be in `state['senior_critique_artifact']`."""
 
 # Junior Validator contexts
-JUNIOR_VALIDATOR_CONTEXT = """- Artifact to validate: {artifact_to_validate}
+JUNIOR_VALIDATOR_CONTEXT = """- Task Description: {task_description}
+- Artifact to validate: {artifact_to_validate}
 - Validation context: {validation_context?}
 - Validation version: {validation_version}"""
 
 # Senior Validator contexts
-SENIOR_VALIDATOR_CONTEXT = """- Primary artifact: {artifact_to_validate}
+SENIOR_VALIDATOR_CONTEXT = """- Task Description: {task_description}
+- Primary artifact: {artifact_to_validate}
 - Junior critique: {junior_critique_artifact}
 - Validation context: {validation_context?}
 - Validation version: {validation_version}"""

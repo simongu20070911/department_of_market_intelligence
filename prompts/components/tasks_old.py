@@ -12,9 +12,6 @@ If the current task is 'generate_initial_plan':
 ### EXISTING WORK CONTEXT ###
 {previous_critiques}
 
-### PARALLEL VALIDATION FEEDBACK ###
-{parallel_validation_feedback}
-
 {existing_plans}
 
 ### ENVIRONMENTAL EXPLORATION ###
@@ -42,9 +39,6 @@ If the current task is 'refine_plan':
 ### VALIDATION FEEDBACK ###
 {previous_critiques}
 
-### PARALLEL VALIDATION FEEDBACK (FROM SPECIALIZED VALIDATORS) ###
-{parallel_validation_feedback}
-
 ### CRITICAL INSTRUCTIONS FOR ADDRESSING CRITIQUES ###
 **DO NOT ARGUE WITH THE VALIDATORS' FEEDBACK. YOUR ROLE IS TO IMPROVE THE PLAN BY DIRECTLY ADDRESSING EACH CRITIQUE.**
 
@@ -54,7 +48,6 @@ If the current task is 'refine_plan':
 - If a validator says something is missing, add it
 - If a validator says something needs clarification, clarify it
 - If a validator suggests a specific approach, adopt it unless technically impossible
-- **CRITICAL: Address ALL issues from parallel validation feedback - these are from specialized domain experts**
 
 ### ENVIRONMENTAL REASSESSMENT ###
 Use your tools to check for any new data sources or workspace changes:
@@ -64,9 +57,8 @@ Use your tools to check for any new data sources or workspace changes:
 
 1.  The current plan version is: {plan_version?}
 2.  Based on the current research plan, validation feedback, and environmental reassessment, meticulously revise the plan to address EVERY SINGLE POINT in the critique. Your revised plan must demonstrate that you have fully incorporated all feedback.
-3.  **IMPORTANT**: Pay special attention to parallel validation feedback - these represent critical issues found by specialized validators
-4.  The new plan must be a complete, standalone document that shows clear improvements based on the validators' guidance.
-5.  Use `write_file` to save the new plan to `{outputs_dir}/planning/research_plan_v{plan_version?}.md`."""
+3.  The new plan must be a complete, standalone document that shows clear improvements based on the validators' guidance.
+4.  Use `write_file` to save the new plan to `{outputs_dir}/planning/research_plan_v{plan_version?}.md`."""
 
 GENERATE_FINAL_REPORT_TASK = """### Task: 'generate_final_report' ###
 If the current task is 'generate_final_report':

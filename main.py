@@ -69,10 +69,8 @@ logging.getLogger("google.adk.tools.mcp_tool").setLevel(logging.ERROR)
 
 # Configure logging based on config
 if VERBOSE_LOGGING:
-    litellm.set_verbose = True
     os.environ['LITELLM_LOG'] = 'DEBUG'
 else:
-    litellm.set_verbose = False
     os.environ['LITELLM_LOG'] = 'ERROR'
 
 # Configure LiteLLM retries for ALL errors

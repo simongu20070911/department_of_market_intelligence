@@ -20,18 +20,21 @@ class AgentContextPreloader:
         "Chief_Researcher": {
             "task_description": "auto_load:{task_file_path}",
             "previous_critiques": "auto_load_directory:{outputs_dir}/planning/critiques/",
+            "parallel_validation_feedback": "auto_load:{outputs_dir}/planning/critiques/parallel_validation_feedback.md",
             "existing_plans": "auto_load_latest:{outputs_dir}/planning/research_plan_v*.md",
             "research_plan": "auto_load_latest:{outputs_dir}/planning/research_plan_v*.md"
         },
         
         # Junior Validator: Fully pre-loaded (validation-focused, no exploration needed)
         "Junior_Validator": {
+            "task_description": "auto_load:{task_file_path}",
             "artifact_content": "auto_load:{artifact_to_validate}",
             "research_plan": "auto_load:{plan_artifact_name}",
         },
         
         # Senior Validator: Fully pre-loaded (validation-focused, no exploration needed)
         "Senior_Validator": {
+            "task_description": "auto_load:{task_file_path}",
             "artifact_content": "auto_load:{artifact_to_validate}",
             "junior_critique": "auto_load_latest:{outputs_dir}/planning/critiques/junior_critique_v*.md",
             "research_plan": "auto_load:{plan_artifact_name}",
@@ -47,6 +50,7 @@ class AgentContextPreloader:
         
         # Experiment Executor: Fully pre-loaded (execution-focused)
         "Experiment_Executor": {
+            "task_description": "auto_load:{task_file_path}",
             "implementation_manifest": "auto_load:{implementation_manifest_artifact}",
             "code_files": "auto_load_directory:{outputs_dir}/workspace/scripts/",
             "previous_execution_logs": "auto_load_latest:{outputs_dir}/execution_*.md"

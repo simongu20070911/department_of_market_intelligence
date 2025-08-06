@@ -110,7 +110,7 @@ OUTPUTS_DIR = os.path.join(_BASE_DIR, "outputs", TASK_ID)
 CHECKPOINTS_DIR = os.path.join(_BASE_DIR, "checkpoints", TASK_ID)
 
 # --- Logging Configuration ---
-VERBOSE_LOGGING = True  # Set to True for detailed debug output, False for cleaner output
+VERBOSE_LOGGING = False  # Set to True for detailed debug output, False for cleaner output
 
 # --- Execution Modes ---
 STREAMING_ENABLED = True # Set to True to stream the thinking process of the agents

@@ -122,25 +122,22 @@ class MicroCheckpointChiefResearcher(LlmAgent):
         )
         
         # Execute research planning with fine-grained tracking
-        print(f"📋 Starting research planning with {len(research_steps)} tracked steps")
+        print(f"📋 Starting research planning with {len(research_steps)} tracked steps in PARALLEL")
         
         with research_operation.execute() as (tracker, steps):
-            planning_results = []
             
-            for step in steps:
-                try:
-                    with tracker.step_context(step):
-                        # Execute individual planning step with checkpointing
-                        step_config = step.input_state
-                        result = await self._execute_planning_step(ctx, step_config)
-                        planning_results.append(result)
-                        
-                        print(f"✅ Completed planning step: {step_config.get('step_name', 'Unknown')}")
-                        
-                except Exception as e:
-                    print(f"❌ Planning step failed: {step.step_name} - {e}")
-                    # Continue with next step - error is captured by step_context
-                    continue
+            # --- CHANGE: Create a list of concurrent tasks instead of a sequential loop ---
+            tasks = [
+                self._run_tracked_step(tracker, step, ctx) for step in steps
+            ]
+            
+            # --- CHANGE: Execute all tasks in parallel and gather results ---
+            # Using return_exceptions=True ensures that one failed step doesn't
+            # stop the others, which aligns perfectly with your micro-checkpointing.
+            planning_results_with_errors = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Filter out successful results from potential exceptions
+            planning_results = [res for res in planning_results_with_errors if not isinstance(res, Exception)]
             
             # Create planning summary
             await self._create_planning_summary(ctx, planning_results)
@@ -152,7 +149,20 @@ class MicroCheckpointChiefResearcher(LlmAgent):
             print("🤖 Running LLM agent to synthesize and finalize research planning...")
             async for event in super()._run_async_impl(ctx):
                 yield event
-    
+
+    async def _run_tracked_step(self, tracker, step, ctx):
+        """Helper coroutine to wrap a single step's execution with its tracking context."""
+        try:
+            with tracker.step_context(step):
+                step_config = step.input_state
+                result = await self._execute_planning_step(ctx, step_config)
+                print(f"✅ Completed planning step: {step_config.get('step_name', 'Unknown')}")
+                return result
+        except Exception as e:
+            print(f"❌ Planning step failed: {step.step_name} - {e}")
+            # The exception will be caught by asyncio.gather
+            raise
+
     async def _resume_operation(self, ctx: InvocationContext, op_info: Dict[str, Any]) -> AsyncGenerator[Event, None]:
         """Resume a failed or incomplete research operation."""
         

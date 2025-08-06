@@ -19,7 +19,7 @@ Read and Write limit of underlying MCP desktop comamnder tool is should be 7000 
 Prioritize to write one file in once. 
 Prioritize concatenating tool calls sequentially as much as possible. 
  - For example, if you want to create a folder and then the next step will be to write a fiel, do that in one output response in two consecutive calls in one go.
- - If after those tool calls your job is finished, after the tool call directly output the end fo output marker.  
+ - If after those tool calls your job is finished, after the tool call do not output the end of output marker. You must wait for the next turn, where you check if your job is done. 
 
 If you see an issue in the workflow, DO NOT CONTINUE. Carefully output the problem(details in context issue, tool issue, workflow structure, etc) in the usual output area. 
 
