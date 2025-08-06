@@ -237,10 +237,18 @@ class CoderWorkflowAgent(BaseAgent):
                     )
                     return
 
-                tasks = manifest_data.get("implementation_plan", {}).get("parallel_tasks", [])
-                
+                # Try multiple possible structures for backward compatibility
+                tasks = manifest_data.get("tasks", [])  # Direct tasks array (current format)
                 if not tasks:
-                    print("CODER WORKFLOW: No coding tasks found in manifest.")
+                    # Fallback to nested structure (legacy format)
+                    implementation_plan = manifest_data.get("implementation_plan", {})
+                    tasks = implementation_plan.get("parallel_tasks", [])
+                
+                # Filter for actual coding tasks (ones that need code generation)
+                coding_tasks = [t for t in tasks if 'write' in t.get('task_id', '').lower() or 'script' in t.get('description', '').lower()]
+                
+                if not coding_tasks:
+                    print(f"CODER WORKFLOW: No coding tasks found in manifest (found {len(tasks)} total tasks, but none require code generation).")
                     from google.adk.events import Event
                     from google.genai.types import Content, Part
                     yield Event(
@@ -250,10 +258,10 @@ class CoderWorkflowAgent(BaseAgent):
                     return
                 
                 # Execute tasks with DAG parallelism
-                async for event in self._execute_tasks_with_dag_parallelism(ctx, tasks):
+                async for event in self._execute_tasks_with_dag_parallelism(ctx, coding_tasks):
                     yield event
                     
-                print(f"CODER WORKFLOW: Completed {len(tasks)} coding tasks")
+                print(f"CODER WORKFLOW: Completed {len(coding_tasks)} coding tasks")
                 
             else:
                 print(f"CODER WORKFLOW: Manifest file not found: {manifest_path}")

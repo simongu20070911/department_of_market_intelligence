@@ -137,93 +137,48 @@ def create_specialized_parallel_validator(validator_type: str, index: int, valid
     else:
         tools = desktop_commander_toolset
     
+    # Import the centralized validation prompts that Junior and Senior use
+    from ..prompts.components.contexts import JUNIOR_VALIDATION_PROMPTS
+    
+    # All parallel validators use the same comprehensive validation approach
+    comprehensive_validation = JUNIOR_VALIDATION_PROMPTS.get("research_plan", "")
+    
     validator_configs = {
         "research_plan": {
-            "statistical": {
-                "name": "StatisticalRigorValidator",
-                "focus": """
-                Focus EXCLUSIVELY on statistical methodology:
-                - Hypothesis test appropriateness (t-test vs Mann-Whitney, etc.)
-                - Sample size and power calculations
-                - Multiple testing correction methods
-                - Assumption validation procedures
-                - Effect size interpretation plans
-                - Confidence interval specifications
-                - Time series stationarity tests
-                - Cross-sectional independence tests
-                """,
+            "validator_0": {
+                "name": "ParallelValidator_0",
+                "focus": comprehensive_validation,
             },
-            "data": {
-                "name": "DataQualityValidator", 
-                "focus": """
-                Focus EXCLUSIVELY on data quality:
-                - Data source reliability assessments
-                - Missing data handling strategies
-                - Outlier detection methodologies
-                - Survivorship bias prevention
-                - Point-in-time data procedures
-                - Corporate action adjustments
-                - Vendor reconciliation plans
-                - Data versioning strategies
-                """,
+            "validator_1": {
+                "name": "ParallelValidator_1",
+                "focus": comprehensive_validation,
             },
-            "market": {
-                "name": "MarketStructureValidator",
-                "focus": """
-                Focus EXCLUSIVELY on market considerations:
-                - Market microstructure effects
-                - Liquidity considerations
-                - Transaction cost modeling
-                - Market impact estimation
-                - Regulatory regime handling
-                - Cross-market consistency
-                - Trading hour adjustments
-                - Holiday calendar handling
-                """,
+            "validator_2": {
+                "name": "ParallelValidator_2",
+                "focus": comprehensive_validation,
+            },
+            "validator_3": {
+                "name": "ParallelValidator_3",
+                "focus": comprehensive_validation,
             }
         },
+        # For implementation manifests, also use comprehensive validation
         "implementation_manifest": {
-            "parallelization": {
-                "name": "ParallelizationValidator",
-                "focus": """
-                Focus EXCLUSIVELY on parallelization:
-                - Tasks that could run in parallel but don't
-                - Unnecessary sequential dependencies
-                - Resource utilization optimization
-                - Load balancing across workers
-                - Bottleneck identification
-                - Parallel group assignments
-                - Convergence point efficiency
-                - Missing parallel opportunities
-                """,
+            "validator_0": {
+                "name": "ParallelValidator_0",
+                "focus": JUNIOR_VALIDATION_PROMPTS.get("implementation_manifest", comprehensive_validation),
             },
-            "interfaces": {
-                "name": "InterfaceContractValidator",
-                "focus": """
-                Focus EXCLUSIVELY on interfaces:
-                - Data schema completeness
-                - Type specifications clarity
-                - Error code definitions
-                - Validation rule presence
-                - Null handling specifications
-                - Schema version compatibility
-                - Format conversion needs
-                - Integration test points
-                """,
+            "validator_1": {
+                "name": "ParallelValidator_1", 
+                "focus": JUNIOR_VALIDATION_PROMPTS.get("implementation_manifest", comprehensive_validation),
             },
-            "alignment": {
-                "name": "PlanAlignmentValidator",
-                "focus": """
-                Focus EXCLUSIVELY on plan alignment:
-                - Research requirements coverage
-                - Missing experimental components
-                - Success criteria mapping
-                - Output completeness
-                - Timeline feasibility
-                - Resource adequacy
-                - Dependency accuracy
-                - Risk mitigation presence
-                """,
+            "validator_2": {
+                "name": "ParallelValidator_2",
+                "focus": JUNIOR_VALIDATION_PROMPTS.get("implementation_manifest", comprehensive_validation),
+            },
+            "validator_3": {
+                "name": "ParallelValidator_3",
+                "focus": JUNIOR_VALIDATION_PROMPTS.get("implementation_manifest", comprehensive_validation),
             }
         }
     }
@@ -236,7 +191,8 @@ def create_specialized_parallel_validator(validator_type: str, index: int, valid
     
     instruction_template = f"""
         ### Persona ###
-        You are a {validator_info['name']} for ULTRATHINK_QUANTITATIVEMarketAlpha parallel validation.
+        You are {validator_info['name']}, a meticulous validator for ULTRATHINK_QUANTITATIVEMarketAlpha.
+        You perform COMPREHENSIVE validation checking EVERYTHING systematically.
         Today's date is: {{current_date}}
 
         ### Context & State ###
@@ -244,20 +200,26 @@ def create_specialized_parallel_validator(validator_type: str, index: int, valid
         Validation context: {{validation_context}}
         Validation version: {{validation_version}}
 
-        ### Specialized Focus ###
+        ### Comprehensive Validation Instructions ###
         {validator_info['focus']}
 
         ### Task ###
         1. Read the artifact using `read_file`
-        2. Apply your specialized lens to identify issues
-        3. ONLY report CRITICAL issues in your focus area
-        4. Write findings to `{{outputs_dir}}/parallel_validation_{validator_type.lower()}_v{{validation_version}}.md`
-        5. If no critical issues in your domain: "No critical {validator_type.lower()} issues found."
+        2. Perform COMPREHENSIVE, STEP-BY-STEP verification
+        3. Check EVERYTHING - assume nothing is correct until verified
+        4. Classify issues as: CRITICAL ERROR, MAJOR GAP, or MINOR ISSUE
+        5. Write findings to `{{outputs_dir}}/parallel_validation_{index}_v{{validation_version}}.md`
 
         ### Output Format ###
-        1. Write your findings to the specified file
-        2. After writing the file, end your response with "<end of output>"
-        3. DO NOT put "<end of output>" inside the file content
+        Structure your report with:
+        1. **SUMMARY** - Overall assessment
+        2. **CRITICAL ERRORS** - Issues that break the approach
+        3. **MAJOR GAPS** - Significant omissions
+        4. **MINOR ISSUES** - Improvements for rigor
+        5. **DETAILED VERIFICATION LOG** - Step-by-step checks
+        
+        After writing the file, end your response with "<end of output>"
+        DO NOT put "<end of output>" inside the file content
         """
 
     def instruction_provider(ctx: ReadonlyContext) -> str:
@@ -500,10 +462,12 @@ class MetaValidatorCheckAgent(BaseAgent):
                 else:
                     print("META VALIDATOR: Could not parse status from critique, assuming 'rejected' to continue loop.")
                     status = "rejected"
+                    ctx.session.state['revision_reason'] = 'senior_validation_parse_error'
             else:
                 # This can happen on the very first run before any critique is written.
                 print("META VALIDATOR: No senior critique file found, assuming 'rejected' to continue loop.")
                 status = "rejected"
+                ctx.session.state['revision_reason'] = 'no_senior_critique_found'
         
         if status == "approved":
             print(f"META VALIDATOR: Status '{status}' - proceeding to next phase")
@@ -516,8 +480,10 @@ class MetaValidatorCheckAgent(BaseAgent):
         else:  # rejected
             print(f"META VALIDATOR: Status '{status}' - continuing refinement loop")
             should_escalate = False
-            # Reset the validation status so that the loop can continue
-            ctx.session.state["validation_status"] = None
+            # Set explicit revision status
+            ctx.session.state["validation_status"] = "needs_revision_after_junior_senior_validation"
+            if 'revision_reason' not in ctx.session.state:
+                ctx.session.state['revision_reason'] = 'senior_validation_rejected'
             
             # Determine the current phase to set the appropriate task
             current_phase = ctx.session.state.get("current_phase", "planning")

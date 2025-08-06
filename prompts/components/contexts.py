@@ -48,39 +48,64 @@ VALIDATION_CONTEXTS = {
 # Junior validator context-specific prompts
 JUNIOR_VALIDATION_PROMPTS = {
     "research_plan": """
-            ### Specific Focus for Research Plan Validation ###
-            As you review this research plan, focus on these CRITICAL edge cases and errors:
+            ### METICULOUS VERIFICATION INSTRUCTIONS ###
+            You must perform a COMPREHENSIVE, STEP-BY-STEP verification of the entire research plan.
+            Check EVERYTHING - assume nothing is correct until you verify it.
             
-            1. **Data Availability Edge Cases**:
-               - Historical data gaps or limitations
-               - Survivorship bias in universe selection
-               - Corporate actions handling (splits, dividends, mergers)
-               - Data vendor inconsistencies
-               - Weekend/holiday data handling
+            **1. STATISTICAL METHODS - VERIFY EVERY TEST**:
+               □ Is each statistical test appropriate for its data type?
+               □ Are sample size requirements met for each test?
+               □ Are distribution assumptions explicitly stated and testable?
+               □ Are confidence intervals properly specified?
+               □ Is multiple comparison correction applied where needed?
+               □ Are effect size calculations included?
+               □ Are power analyses conducted?
+               □ Are null/alternative hypotheses clearly stated?
                
-            2. **Statistical Assumption Failures**:
-               - Stationarity assumptions that might break
-               - Normal distribution assumptions for fat-tailed markets
-               - Independence assumptions in correlated markets
-               - Sample size insufficiency for proposed tests
+            **2. DATA REQUIREMENTS - CHECK EVERY SOURCE**:
+               □ Does each data source actually exist and is it accessible?
+               □ Is the data frequency appropriate for the analysis?
+               □ Are data quality checks specified?
+               □ Is missing data handling defined?
+               □ Are outlier detection methods specified?
+               □ Is data versioning addressed?
+               □ Are there potential survivorship or look-ahead biases?
                
-            3. **Market Regime Dependencies**:
-               - Strategy performance in different volatility regimes
-               - Behavior during market crashes/rallies
-               - Regulatory change impacts
-               - Liquidity regime considerations
+            **3. METHODOLOGY RIGOR - EXAMINE EVERY STEP**:
+               □ Is the experimental design sound?
+               □ Are control variables identified?
+               □ Are confounding factors addressed?
+               □ Is the sampling strategy appropriate?
+               □ Are randomization procedures specified?
+               □ Is reproducibility ensured (seeds, environment)?
+               □ Are there untested assumptions?
                
-            4. **Lookahead Bias Risks**:
-               - Point-in-time data availability
-               - Earnings announcement timing
-               - Index reconstitution knowledge
-               - Economic data revision handling
+            **4. IMPLEMENTATION FEASIBILITY - TEST EVERY CLAIM**:
+               □ Can each proposed experiment actually be executed?
+               □ Are computational resources sufficient?
+               □ Do algorithms scale to the data size?
+               □ Are all dependencies identified?
+               □ Are implementation details complete?
+               □ Are there missing technical specifications?
                
-            5. **Computational Edge Cases**:
-               - Numerical precision for small probabilities
-               - Matrix singularity in factor models
-               - Optimization convergence issues
-               - Backtesting speed/memory constraints
+            **5. DELIVERABLES COMPLETENESS - VERIFY EVERY OUTPUT**:
+               □ Does each required output have a generation method?
+               □ Are all visualizations properly specified?
+               □ Is the reporting structure complete?
+               □ Are success metrics defined?
+               □ Are validation procedures specified?
+               
+            **6. EDGE CASES AND FAILURE MODES**:
+               □ What happens with empty datasets?
+               □ How are numerical edge cases handled (division by zero, overflow)?
+               □ What are the failure recovery procedures?
+               □ Are there timeout specifications?
+               □ How are partial failures handled?
+               
+            For EACH issue found, classify it as:
+            - **CRITICAL ERROR**: Breaks the logical chain, invalidates approach
+            - **MAJOR GAP**: Significant omission that must be addressed
+            - **MINOR ISSUE**: Would improve rigor but not essential
             """,
     
     "implementation_manifest": """
@@ -231,6 +256,47 @@ JUNIOR_VALIDATION_PROMPTS = {
 # Senior validator context-specific prompts
 SENIOR_VALIDATION_PROMPTS = {
     "research_plan": """
+            ### META-VERIFICATION: REVIEW THE JUNIOR VALIDATOR'S CRITIQUE ###
+            You are the Chief Validator reviewing the Junior's bug report. Your task is NOT to re-validate the entire plan.
+            Your goal is to assess the QUALITY and VALIDITY of the Junior's findings.
+            
+            **1. REVIEW EACH FINDING FROM THE JUNIOR**:
+            For each issue the Junior identified, determine:
+               □ Is this a VALID concern or is the Junior being overly pedantic?
+               □ Is this actually a CRITICAL ERROR or just a minor improvement?
+               □ Did the Junior misunderstand the plan's approach?
+               □ Is the Junior asking for unnecessary complexity?
+               
+            **2. FILTER OUT TRIVIAL ISSUES**:
+            REJECT Junior's findings that are:
+               - Obvious to expert practitioners (basic statistical knowledge)
+               - Standard industry practices that don't need explicit stating
+               - Overly academic requirements not needed for practical research
+               - Pedantic formatting or documentation issues
+               - "Nice to have" features presented as critical
+               
+            **3. VALIDATE CRITICAL ERRORS**:
+            CONFIRM Junior's findings only if they are:
+               - Genuine logical flaws that break the approach
+               - Missing essential components for the task
+               - Factual errors in methodology
+               - Real implementation blockers
+               
+            **4. ADD YOUR OWN STRATEGIC ASSESSMENT**:
+            Beyond the Junior's tactical checks, evaluate:
+               - Does the plan address the actual business need?
+               - Is the approach practical and actionable?
+               - Are the deliverables what stakeholders need?
+               - Is the scope appropriate for the timeline?
+               
+            **5. PRODUCE YOUR CURATED BUG REPORT**:
+            Your output should:
+               - List which Junior findings you ACCEPT (with reasoning)
+               - List which Junior findings you REJECT (with reasoning)
+               - Add any strategic issues the Junior missed
+               - Provide a FINAL VERDICT that considers both tactical and strategic aspects
+            
+            Remember: You are the arbiter. Filter noise, keep signal.
             ### Comprehensive Research Plan Analysis ###
             Beyond the junior validator's findings, conduct deep analysis of:
             

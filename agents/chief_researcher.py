@@ -217,9 +217,23 @@ class MicroCheckpointChiefResearcher(LlmAgent):
         # This prevents the agent from proceeding with a broken state.
         progress = micro_checkpoint_manager.operation_registry.get(operation_id)
         if progress and progress.failed_steps:
-            print(f"❌ CRITICAL: Resumed operation '{operation_id}' has {len(progress.failed_steps)} failed steps. Halting.")
-            # Stop the generator, effectively halting this agent's execution.
-            return
+            print(f"⚠️ WARNING: Resumed operation '{operation_id}' has {len(progress.failed_steps)} failed steps.")
+            
+            # Check if we're in a retry loop after validation feedback
+            validation_status = ctx.session.state.get('validation_status', '')
+            revision_reason = ctx.session.state.get('revision_reason', '')
+            
+            if validation_status in ['needs_revision', 'needs_revision_after_parallel_validation']:
+                if revision_reason == 'parallel_validation_critical_issues':
+                    issues_count = ctx.session.state.get('parallel_validation_issues_count', 0)
+                    print(f"♻️ Detected retry after parallel validation ({issues_count} critical issues) - starting fresh")
+                else:
+                    print("♻️ Detected retry after validation feedback - starting fresh instead of resuming failed operation")
+                # Don't resume the failed operation, fall through to run fresh LLM agent
+            else:
+                print(f"❌ CRITICAL: Halting due to failed steps in operation.")
+                # Stop the generator, effectively halting this agent's execution.
+                return
 
         # After resuming, run the final synthesis step
         print("🤖 Running LLM agent to synthesize and finalize resumed research planning...")

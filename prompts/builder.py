@@ -104,6 +104,10 @@ def inject_template_variables(template: str, ctx, agent_name: str) -> str:
     current_year = str(datetime.now().year)
     validation_version = str(session_state.get("validation_version") or 0)
     
+    # Get plan version for Chief Researcher refinement tasks
+    plan_version = str(session_state.get("plan_version") or 0)
+    next_version = str(int(plan_version) + 1)
+    
     # Get task file path
     task_file_path = f"{config.TASKS_DIR}/{task_id}.md"
     
@@ -123,6 +127,9 @@ def inject_template_variables(template: str, ctx, agent_name: str) -> str:
         "{current_year}": current_year,
         "{task_id}": task_id,
         "{validation_version}": validation_version,
+        "{plan_version}": plan_version,
+        "{plan_version?}": plan_version,  # Handle optional syntax
+        "{next_version}": next_version,
         "{task_file_path}": task_file_path,
         # FIX: Add the artifact path to the replacement dictionary
         "{artifact_to_validate}": artifact_to_validate,

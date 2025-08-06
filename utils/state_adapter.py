@@ -48,6 +48,10 @@ class StateAdapter:
             session.validation_info.validation_version = state_dict['validation_version']
         if 'validation_status' in state_dict:
             session.validation_info.validation_status = state_dict['validation_status']
+        if 'revision_reason' in state_dict:
+            session.validation_info.revision_reason = state_dict['revision_reason']
+        if 'parallel_validation_issues_count' in state_dict:
+            session.validation_info.parallel_validation_issues_count = state_dict['parallel_validation_issues_count']
         if 'junior_critique_artifact' in state_dict:
             session.validation_info.junior_critique_artifact = state_dict['junior_critique_artifact']
         if 'senior_critique_artifact' in state_dict:
@@ -141,6 +145,8 @@ class StateAdapter:
         # Flatten validation info
         state_dict['validation_version'] = session.validation_info.validation_version
         state_dict['validation_status'] = session.validation_info.validation_status
+        state_dict['revision_reason'] = session.validation_info.revision_reason
+        state_dict['parallel_validation_issues_count'] = session.validation_info.parallel_validation_issues_count
         state_dict['junior_critique_artifact'] = session.validation_info.junior_critique_artifact
         state_dict['senior_critique_artifact'] = session.validation_info.senior_critique_artifact
         state_dict['parallel_validation_critical_issues'] = session.validation_info.parallel_validation_critical_issues
@@ -228,6 +234,10 @@ class StateProxy:
             self._session.validation_info.validation_status = value
         elif key == 'validation_version':
             self._session.validation_info.validation_version = value
+        elif key == 'revision_reason':
+            self._session.validation_info.revision_reason = value
+        elif key == 'parallel_validation_issues_count':
+            self._session.validation_info.parallel_validation_issues_count = value
         elif key == 'junior_critique_artifact':
             self._session.validation_info.junior_critique_artifact = value
         elif key == 'senior_critique_artifact':

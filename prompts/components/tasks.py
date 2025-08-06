@@ -31,7 +31,13 @@ Use your tools to explore the environment and understand:
     - Proactively identify and include experiments for any potentially interesting secondary relationships observed in the problem description.
 2.  CRITICAL: First ensure the directory exists by using `create_directory` for `{outputs_dir}/planning/` if needed.
 3.  Then use the `write_file` tool to save this plan to a new file. The full path MUST be `{outputs_dir}/planning/research_plan_v0.md`.
-4.  IMPORTANT: Make each tool call separately - do not attempt to make multiple tool calls in one response."""
+4.  IMPORTANT: Make each tool call separately - do not attempt to make multiple tool calls in one response.
+
+### FILE CREATION RULES ###
+- ✅ Use `write_file` to CREATE new files
+- ❌ NEVER use `edit_file` - this is for refinement agents only
+- ❌ NEVER modify existing files like critiques or previous plans
+- If this is a retry after validation feedback, create a NEW version (v1, v2, etc.)"""
 
 REFINE_PLAN_TASK = """### Task: 'refine_plan' ###
 If the current task is 'refine_plan':
@@ -66,7 +72,24 @@ Use your tools to check for any new data sources or workspace changes:
 2.  Based on the current research plan, validation feedback, and environmental reassessment, meticulously revise the plan to address EVERY SINGLE POINT in the critique. Your revised plan must demonstrate that you have fully incorporated all feedback.
 3.  **IMPORTANT**: Pay special attention to parallel validation feedback - these represent critical issues found by specialized validators
 4.  The new plan must be a complete, standalone document that shows clear improvements based on the validators' guidance.
-5.  Use `write_file` to save the new plan to `{outputs_dir}/planning/research_plan_v{plan_version?}.md`."""
+
+### CRITICAL FILE VERSIONING RULES ###
+**NEVER EDIT EXISTING FILES - ALWAYS CREATE NEW VERSIONS**
+- ❌ NEVER use `edit_file` on existing plans or critiques
+- ❌ NEVER overwrite `research_plan_v0.md`, `research_plan_v1.md`, etc.
+- ✅ ALWAYS create a NEW file with incremented version number
+- ✅ The new version number should be {plan_version?} + 1
+- ✅ Use `write_file` to save the NEW plan to `{outputs_dir}/planning/research_plan_v{next_version}.md`
+
+### SURGICAL PRECISION REQUIREMENTS ###
+- ONLY modify sections that address validator feedback
+- Keep all other sections EXACTLY as they were in the previous version
+- For each critique point:
+  - Quote the specific critique
+  - Show the exact change made to address it
+  - Preserve everything else unchanged
+- Do NOT make "improvements" beyond what was requested
+- Do NOT reformat or reorganize unless specifically critiqued"""
 
 GENERATE_FINAL_REPORT_TASK = """### Task: 'generate_final_report' ###
 If the current task is 'generate_final_report':
@@ -176,12 +199,30 @@ CRITICAL INSTRUCTION: All content above has been PRE-LOADED for your analysis. D
 {context_specific_prompt}"""
 
 # Validator Output Requirements
-JUNIOR_VALIDATOR_OUTPUT_REQUIREMENTS = """- If you find critical issues, list them clearly and concisely
-- For each issue, explain WHY it's critical and its potential impact
-- If no critical issues found, write: "No critical issues found."
-- Use `write_file` to save your critique to `{outputs_dir}/planning/critiques/junior_critique_v{validation_version}.md`
-- Include a section "Key Files Reviewed:" listing important files you examined
-- END your critique file with: **FINAL VALIDATION STATUS: [approved|rejected|critical_error]**"""
+JUNIOR_VALIDATOR_OUTPUT_REQUIREMENTS = """### OUTPUT FORMAT FOR JUNIOR VALIDATOR ###
+Structure your bug report EXACTLY as follows:
+
+**1. SUMMARY**
+   - Overall assessment and total finding count
+   - Final verdict sentence
+
+**2. CRITICAL ERRORS** (Issues that break the approach)
+   - List each with location quote and detailed explanation
+
+**3. MAJOR GAPS** (Significant omissions that must be addressed) 
+   - List each with location quote and impact assessment
+
+**4. MINOR ISSUES** (Improvements for rigor)
+   - List each briefly
+
+**5. DETAILED VERIFICATION LOG**
+   - Step-by-step check of EVERY section
+   - Quote relevant text before analysis
+   - Justify correct steps briefly
+   - Explain issues in detail
+
+- Use `write_file` to save to `{outputs_dir}/planning/critiques/junior_critique_v{validation_version}.md`
+- END with: **FINAL VALIDATION STATUS: [approved|rejected|critical_error]**"""
 
 # Senior Validator Specific Tasks
 SENIOR_VALIDATOR_COMPREHENSIVE_ANALYSIS = """IMPORTANT: All necessary content has been PRE-LOADED in the sections above. DO NOT attempt to read files.
@@ -195,15 +236,31 @@ You have access to comprehensive context pre-loaded above. Use this PRE-LOADED c
 
 DO NOT use the read_file tool - everything you need is already loaded above."""
 
-SENIOR_VALIDATOR_SYNTHESIS = """1. Synthesize junior validator findings with your comprehensive analysis
-2. Write detailed critique to `{outputs_dir}/planning/critiques/senior_critique_v{validation_version}.md`
-3. Include sections:
-   - "Junior Validator Findings Addressed"
-   - "Additional Critical Analysis"
-   - "Recommendations for Improvement"
-   - "Key Files Reviewed" (list all files examined)
+SENIOR_VALIDATOR_SYNTHESIS = """### SENIOR VALIDATOR OUTPUT FORMAT ###
+
+1. **REVIEW OF JUNIOR'S FINDINGS**
+   For each Junior finding, state:
+   - ACCEPT ✓ or REJECT ✗ 
+   - Your reasoning for accepting/rejecting
    
-4. Make final judgment:
+2. **FILTERED BUG REPORT**
+   Only include findings you ACCEPTED from Junior:
+   - Critical Errors (if any remain after filtering)
+   - Major Gaps (if any remain after filtering)
+   - Minor Issues (only if truly valuable)
+   
+3. **STRATEGIC ASSESSMENT**
+   Your own high-level evaluation:
+   - Does it meet business objectives?
+   - Is the approach practical?
+   - Are deliverables appropriate?
+   
+4. **FINAL CURATED FINDINGS**
+   Clean list of issues that MUST be addressed
+
+Write to `{outputs_dir}/planning/critiques/senior_critique_v{validation_version}.md`
+
+Make final judgment:
    - END your critique file with: **FINAL VALIDATION STATUS: [approved|rejected|critical_error]**
    - 'approved': Work meets all quality standards
    - 'rejected': Needs refinement but fixable

@@ -23,7 +23,18 @@ class TaskInfo(BaseModel):
 class ValidationInfo(BaseModel):
     """Information about validation state."""
     validation_version: int = 0
-    validation_status: Literal["pending", "approved", "rejected", "critical_error"] = "pending"
+    validation_status: Literal[
+        "pending", 
+        "approved", 
+        "rejected", 
+        "critical_error",
+        "needs_revision",
+        "needs_revision_after_junior_senior_validation",
+        "needs_revision_after_parallel_validation",
+        "approved_with_fallback"
+    ] = "pending"
+    revision_reason: Optional[str] = None  # Tracks why revision is needed
+    parallel_validation_issues_count: int = 0  # Count of parallel validation issues
     junior_critique_artifact: Optional[str] = None  # File path
     senior_critique_artifact: Optional[str] = None  # File path
     parallel_validation_critical_issues: List[str] = Field(default_factory=list)

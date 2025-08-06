@@ -83,26 +83,56 @@ class ContextAwareAgentWrapper(BaseAgent):
             
             task_id = ctx.session.state.get('task_id', config.TASK_ID)
             outputs_dir = config.get_outputs_dir(task_id)
-            plan_files = glob.glob(f"{outputs_dir}/planning/research_plan_v*.md")
             
-            if plan_files:
-                # Find the latest plan by extracting the version number from the filename
-                def get_version_from_path(p):
-                    match = re.search(r'_v(\d+)\.md', os.path.basename(p))
-                    return int(match.group(1)) if match else -1
-
-                latest_plan = max(plan_files, key=get_version_from_path)
-                
-                ctx.session.state['plan_artifact_name'] = latest_plan
-                ctx.session.state['artifact_to_validate'] = latest_plan
-                print(f"📎 Wrapper found latest plan and set for validation: {os.path.basename(latest_plan)}")
+            # Check if we just completed a refinement task
+            current_task = ctx.session.state.get('current_task', '')
+            expected_version = ctx.session.state.get('plan_version', 0)
+            
+            if current_task == 'refine_plan':
+                # For refinement, look for the specific version that should have been created
+                expected_plan = f"{outputs_dir}/planning/research_plan_v{expected_version}.md"
+                if os.path.exists(expected_plan):
+                    ctx.session.state['plan_artifact_name'] = expected_plan
+                    ctx.session.state['artifact_to_validate'] = expected_plan
+                    print(f"📎 Wrapper found refined plan v{expected_version}: {os.path.basename(expected_plan)}")
+                else:
+                    print(f"⚠️  ERROR: Chief Researcher did not create expected plan v{expected_version}")
+                    print(f"   Expected file: {expected_plan}")
+                    # Find what actually exists
+                    plan_files = glob.glob(f"{outputs_dir}/planning/research_plan_v*.md")
+                    if plan_files:
+                        def get_version_from_path(p):
+                            match = re.search(r'_v(\d+)\.md', os.path.basename(p))
+                            return int(match.group(1)) if match else -1
+                        latest_plan = max(plan_files, key=get_version_from_path)
+                        latest_version = get_version_from_path(latest_plan)
+                        print(f"   Latest plan found: v{latest_version}")
+                        # Update state to reflect reality
+                        ctx.session.state['plan_version'] = latest_version
+                        ctx.session.state['plan_artifact_name'] = latest_plan
+                        ctx.session.state['artifact_to_validate'] = latest_plan
             else:
-                # --- FIX: Prevent validator from running on a non-existent file ---
-                # This makes the point of failure much clearer.
-                print(f"⚠️  Wrapper could not find any research plan files in {outputs_dir}/planning/")
-                # Set a clear "not found" state instead of a path that will fail later
-                ctx.session.state['artifact_to_validate'] = "FILE_NOT_FOUND" 
-                # --- END FIX ---
+                # For initial generation, find the latest plan
+                plan_files = glob.glob(f"{outputs_dir}/planning/research_plan_v*.md")
+                
+                if plan_files:
+                    # Find the latest plan by extracting the version number from the filename
+                    def get_version_from_path(p):
+                        match = re.search(r'_v(\d+)\.md', os.path.basename(p))
+                        return int(match.group(1)) if match else -1
+
+                    latest_plan = max(plan_files, key=get_version_from_path)
+                    
+                    ctx.session.state['plan_artifact_name'] = latest_plan
+                    ctx.session.state['artifact_to_validate'] = latest_plan
+                    print(f"📎 Wrapper found latest plan and set for validation: {os.path.basename(latest_plan)}")
+                else:
+                    # --- FIX: Prevent validator from running on a non-existent file ---
+                    # This makes the point of failure much clearer.
+                    print(f"⚠️  Wrapper could not find any research plan files in {outputs_dir}/planning/")
+                    # Set a clear "not found" state instead of a path that will fail later
+                    ctx.session.state['artifact_to_validate'] = "FILE_NOT_FOUND" 
+                    # --- END FIX ---
 
         if self.name == "ContextAwareOrchestrator":
             # The orchestrator creates a single manifest file, so we can use a fixed path
@@ -247,8 +277,10 @@ def get_context_aware_research_planning_workflow():
                     print(f"📝 Saved parallel validation feedback to {parallel_feedback_path}")
                     
                     # Reset validation status for next iteration
-                    ctx.session.state['validation_status'] = 'needs_revision'
+                    ctx.session.state['validation_status'] = 'needs_revision_after_parallel_validation'
                     ctx.session.state['validation_context'] = 'research_plan'
+                    ctx.session.state['revision_reason'] = 'parallel_validation_critical_issues'
+                    ctx.session.state['parallel_validation_issues_count'] = len(consolidated_issues)
                     
                     # Continue to next iteration if not at max
                     if iteration < self._max_parallel_iterations - 1:
