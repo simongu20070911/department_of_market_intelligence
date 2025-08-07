@@ -52,6 +52,12 @@ def transition_to_phase(ctx: InvocationContext, new_phase: str) -> bool:
     if enhanced_phase_manager.can_transition(current_phase_enum, new_phase_enum):
         logger.info(f"🔄 Transitioning from {state.current_phase} to {new_phase_enum.value}")
         state.current_phase = new_phase_enum.value
+        
+        # Update critique paths when entering validation phases
+        if "validation" in new_phase_enum.value:
+            state.validation.update_critique_paths(state.task_id)
+            logger.info(f"📝 Updated critique paths - Junior: {state.validation.junior_critique_path}")
+        
         return True
     else:
         logger.error(f"❌ Invalid transition attempted from {state.current_phase} to {new_phase_enum.value}")

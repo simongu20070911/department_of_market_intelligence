@@ -118,10 +118,10 @@ Your outputs directory follows this EXACT structure. You MUST use these paths:
     └── raw/                                     [Raw data files]
 ```
 
-### PATH EXAMPLES - USE THESE EXACT PATTERNS:
-✅ Research Plan: `{outputs_dir}/planning/research_plan_v0.md`
-✅ Junior Critique: `{outputs_dir}/planning/critiques/junior_critique_v{validation_version}.md`
-✅ Senior Critique: `{outputs_dir}/planning/critiques/senior_critique_v{validation_version}.md`
+### EXACT PATHS TO USE - DO NOT MODIFY:
+✅ Research Plan: `{artifact_to_validate}` (READ THIS)
+✅ Junior Critique: `{junior_critique_path}` (WRITE HERE - USE EXACT PATH)
+✅ Senior Critique: `{senior_critique_path}` (WRITE HERE - USE EXACT PATH)
 ✅ Implementation Manifest: `{outputs_dir}/planning/implementation_manifest.json`
 ✅ Results Script: `{outputs_dir}/workspace/scripts/results_extraction.py`
 ✅ Final Report: `{outputs_dir}/results/deliverables/final_report.md`

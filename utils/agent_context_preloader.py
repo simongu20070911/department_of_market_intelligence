@@ -145,6 +145,9 @@ class AgentContextPreloader:
             "{implementation_manifest_artifact}": execution_obj.get("implementation_manifest_artifact", ""),
             "{task_id}": task_id,
             "{validation_version}": str(validation_obj.get("validation_version", 0)),
+            # Add the computed critique paths - single source of truth
+            "{junior_critique_path}": validation_obj.get("junior_critique_path", ""),
+            "{senior_critique_path}": validation_obj.get("senior_critique_path", ""),
         }
         
         # Apply replacements

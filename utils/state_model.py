@@ -11,6 +11,16 @@ class ValidationInfo(BaseModel):
     revision_reason: Optional[str] = None
     parallel_validation_issues_count: int = 0
     consolidated_validation_issues: List[str] = Field(default_factory=list)
+    
+    # Computed paths for validators - single source of truth
+    junior_critique_path: Optional[str] = None
+    senior_critique_path: Optional[str] = None
+    
+    def update_critique_paths(self, task_id: str):
+        """Update critique paths based on current version and task."""
+        from ..utils import directory_manager
+        self.junior_critique_path = directory_manager.get_critique_path(task_id, self.validation_version, "junior")
+        self.senior_critique_path = directory_manager.get_critique_path(task_id, self.validation_version, "senior")
 
 class ExecutionInfo(BaseModel):
     """Structured model for execution state."""
