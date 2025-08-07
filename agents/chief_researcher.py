@@ -39,28 +39,31 @@ class ChiefResearcherAgent(BaseAgent):
             base_instruction = inject_template_variables_with_context_preloading(
                 CHIEF_RESEARCHER_INSTRUCTION, inner_ctx, "Chief_Researcher"
             )
-            # Add explicit task guidance
+            # Add explicit task guidance - be very clear about what needs to be done
             task_guidance = f"""
 
-### YOUR IMMEDIATE TASK ###
-You need to complete these actions:
+### YOUR CRITICAL TASK - MUST COMPLETE ###
+You are the Chief Researcher. Your job is to create the initial research plan.
 
-1. Create the planning directory using this exact tool call:
-   Tool: mcp__desktop-commander__create_directory
-   Parameters: path="{planning_dir}"
+**STEP 1**: Create the planning directory
+- Tool name: mcp__desktop-commander__create_directory
+- Parameter: path = "{planning_dir}"
 
-2. Write the comprehensive research plan using this exact tool call:
-   Tool: mcp__desktop-commander__write_file
-   Parameters: 
-   - path="{plan_path}"
-   - content="[Your detailed research plan here]"
-   - mode="rewrite"
+**STEP 2**: Write the research plan 
+- Tool name: mcp__desktop-commander__write_file
+- Parameters:
+  - path = "{plan_path}"
+  - content = (your detailed research plan in markdown)
+  - mode = "rewrite"
 
-The research plan should:
-- Analyze the provided research task
-- Outline a comprehensive approach for quantitative research
-- Include specific methodologies and expected outcomes
-- Be written in markdown format
+The research plan should be comprehensive and include:
+- Research objectives
+- Methodology 
+- Data sources
+- Analysis approach
+- Expected outcomes
+
+DO NOT just acknowledge the task - you MUST execute these tool calls to create the directory and write the file.
 """
             return base_instruction + task_guidance
         
