@@ -8,6 +8,12 @@ def get_domi_state(ctx: InvocationContext) -> DOMISessionState:
     """
     Ensures the session state is a DOMISessionState object, initializing if necessary.
     """
+    # Handle ReadonlyContext which doesn't have session attribute
+    if not hasattr(ctx, 'session'):
+        from .. import config
+        # Return a default state for ReadonlyContext
+        return DOMISessionState(task_id=config.TASK_ID)
+    
     if not isinstance(ctx.session.state, DOMISessionState):
         logger.warning("Session state is not a DOMISessionState object. Initializing a new one.")
         from .. import config
