@@ -148,13 +148,6 @@ Today's date is: {current_date}
 Current year: {current_year}
 Remember: You cannot analyze future data. Any analysis period must end on or before today's date."""
 
-# File path context
-FILE_PATH_CONTEXT = """### Working Environment ###
-📁 PROJECT WORKSPACE: /home/gaen/agents_gaen/department_of_market_intelligence/
-📊 CURRENT TASK ID: {task_id}
-🎯 OUTPUTS DIRECTORY: {outputs_dir}
-📋 TASK FILE: {task_file_path}"""
-
 # Comprehensive directory structure specification
 DIRECTORY_STRUCTURE_SPEC = """### CRITICAL: OUTPUT DIRECTORY STRUCTURE ###
 Your outputs directory follows this EXACT structure. You MUST use these paths:

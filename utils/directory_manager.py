@@ -1,99 +1,34 @@
-# /department_of_market_intelligence/utils/directory_manager.py
-"""Utility for creating the standardized directory structure."""
-
 import os
-from typing import List
+from .. import config
 
-# Define all required subdirectories as a constant for reuse
-DIRECTORY_STRUCTURE = [
-    # Planning directories
-    "planning",
-    "planning/critiques", 
-    
-    # Workspace directories
-    "workspace",
-    "workspace/scripts",
-    "workspace/notebooks",
-    "workspace/src",
-    "workspace/tests",
-    
-    # Results directories
-    "results",
-    "results/deliverables",
-    "results/deliverables/presentations",
-    "results/charts",
-    
-    # Data directories
-    "data",
-    "data/external",
-    "data/processed",
-    "data/raw",
-]
+def get_research_plan_path(task_id: str, version: int) -> str:
+    """Gets the path for a research plan of a specific version."""
+    return os.path.join(config.get_outputs_dir(task_id), "planning", f"research_plan_v{version}.md")
 
-def create_task_directory_structure(outputs_dir: str) -> None:
-    """Create the complete directory structure for a task.
-    
-    Creates the exact structure specified in DIRECTORY_STRUCTURE_SPEC:
-    
-    outputs_dir/
-    ├── planning/
-    │   └── critiques/
-    ├── workspace/
-    │   ├── scripts/
-    │   ├── notebooks/
-    │   ├── src/
-    │   └── tests/
-    ├── results/
-    │   ├── deliverables/
-    │   │   └── presentations/
-    │   └── charts/
-    └── data/
-        ├── external/
-        ├── processed/
-        └── raw/
-    
-    Args:
-        outputs_dir: The base outputs directory path
-    """
-    # Create all directories from the constant
-    for rel_path in DIRECTORY_STRUCTURE:
-        dir_path = os.path.join(outputs_dir, rel_path)
-        os.makedirs(dir_path, exist_ok=True)
-    
-    print(f"📁 Created complete directory structure in: {outputs_dir}")
-    print(f"   • {len(DIRECTORY_STRUCTURE)} subdirectories created")
+def get_critique_path(task_id: str, version: int, role: str) -> str:
+    """Gets the path for a critique file."""
+    return os.path.join(config.get_outputs_dir(task_id), "planning", "critiques", f"{role}_critique_v{version}.md")
 
+def get_implementation_manifest_path(task_id: str) -> str:
+    """Gets the path for the implementation manifest."""
+    return os.path.join(config.get_outputs_dir(task_id), "implementation", "orchestration_plan.json")
 
-def validate_directory_structure(outputs_dir: str) -> List[str]:
-    """Validate that the directory structure is complete.
-    
-    Args:
-        outputs_dir: The base outputs directory path
-        
-    Returns:
-        List of missing directories (empty if all exist)
-    """
-    missing_dirs = []
-    for rel_path in DIRECTORY_STRUCTURE:
-        dir_path = os.path.join(outputs_dir, rel_path)
-        if not os.path.exists(dir_path):
-            missing_dirs.append(dir_path)
-    
-    return missing_dirs
+def get_execution_journal_path(task_id: str) -> str:
+    """Gets the path for the execution journal."""
+    return os.path.join(config.get_outputs_dir(task_id), "execution", "execution_journal.md")
 
+def get_results_extraction_script_path(task_id: str) -> str:
+    """Gets the path for the results extraction script."""
+    return os.path.join(config.get_outputs_dir(task_id), "workspace", "scripts", "results_extraction.py")
 
-def get_directory_structure_summary(outputs_dir: str) -> str:
-    """Get a summary of the directory structure status.
-    
-    Args:
-        outputs_dir: The base outputs directory path
-        
-    Returns:
-        Formatted string summarizing the directory structure
-    """
-    missing = validate_directory_structure(outputs_dir)
-    
-    if not missing:
-        return f"✅ Complete directory structure exists in: {outputs_dir}"
-    else:
-        return f"❌ Missing {len(missing)} directories in: {outputs_dir}\n   Missing: {missing[:3]}{'...' if len(missing) > 3 else ''}"
+def get_final_report_path(task_id: str) -> str:
+    """Gets the path for the final report."""
+    return os.path.join(config.get_outputs_dir(task_id), "results", "deliverables", "final_report.md")
+
+def get_parallel_validation_path(task_id: str, version: int, index: int) -> str:
+    """Gets the path for a parallel validation file."""
+    return os.path.join(config.get_outputs_dir(task_id), "planning", "critiques", f"parallel_validation_{index}_v{version}.md")
+
+def get_coder_output_path(task_id: str, sub_task_id: str, version: int) -> str:
+    """Gets the path for a coder's output for a specific sub-task and version."""
+    return os.path.join(config.get_outputs_dir(task_id), "implementation", "code", f"{sub_task_id}_v{version}.py")

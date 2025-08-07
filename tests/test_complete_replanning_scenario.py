@@ -11,7 +11,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import department_of_market_intelligence.config as config
 config.DRY_RUN_MODE = True
 config.DRY_RUN_SKIP_LLM = True
-config.MAX_EXECUTION_CORRECTION_LOOPS = 2  # Allow 2 attempts
 config.VERBOSE_LOGGING = False
 
 from department_of_market_intelligence.tools.mock_llm_agent import MockLlmAgent

@@ -1,300 +1,304 @@
 # /department_of_market_intelligence/utils/checkpoint_manager.py
-"""Checkpoint management system for research task recovery and resumption."""
+"""
+Robust, centralized checkpoint and recovery system for the DOMI workflow.
 
+This manager handles:
+- Creating and tracking multi-step operations with fine-grained recovery.
+- Saving and resuming operation progress with retries and timeouts.
+- Taking snapshots of the full application state at critical junctures.
+- Providing a clean interface for agents to manage long-running, fallible tasks.
+"""
 import os
 import json
-import pickle
 import shutil
+import time
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
+from dataclasses import dataclass, field, asdict
+from contextlib import contextmanager
 
 from .. import config
+from .state_model import DOMISessionState
 
+@dataclass
+class OperationStep:
+    """Represents a single recoverable operation step."""
+    step_id: str
+    operation_type: str  # "file_generation", "data_processing", "experiment", etc.
+    step_name: str
+    input_state: Dict[str, Any]
+    expected_outputs: List[str]  # Files/artifacts expected to be created
+    timeout_seconds: Optional[int] = None
+    retry_count: int = 0
+    max_retries: int = 3
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    error_info: Optional[Dict[str, Any]] = None
+    
+    def __post_init__(self):
+        """Apply config defaults after initialization."""
+        from .. import config
+        if self.timeout_seconds is None:
+            self.timeout_seconds = config.MICRO_CHECKPOINT_TIMEOUT
+        if self.max_retries == 3:  # Only override if using default
+            self.max_retries = config.MICRO_CHECKPOINT_MAX_RETRIES
+
+@dataclass
+class OperationProgress:
+    """Tracks progress through a multi-step operation."""
+    operation_id: str
+    agent_name: str
+    total_steps: int
+    completed_steps: List[str]
+    current_step: Optional[str] = None
+    failed_steps: List[str] = None
+    operation_state: Dict[str, Any] = None
+    created_at: str = None
+    updated_at: str = None
+
+    def __post_init__(self):
+        if self.failed_steps is None:
+            self.failed_steps = []
+        if self.operation_state is None:
+            self.operation_state = {}
+        if self.created_at is None:
+            self.created_at = datetime.now(timezone.utc).isoformat()
+        self.updated_at = datetime.now(timezone.utc).isoformat()
 
 class CheckpointManager:
-    """Manages checkpoints for research task execution with recovery capabilities."""
-    
-    def __init__(self, task_id: str = None):
-        self.task_id = task_id or config.TASK_ID
-        self.current_checkpoint = None
-        self.agent_execution_count = 0
+    """Manages the lifecycle of checkpoints and resumable operations."""
+
+    def __init__(self, task_id: str):
+        self.task_id = task_id
+        self.operation_registry: Dict[str, OperationProgress] = {}
+        self.current_operation: Optional[str] = None
 
     @property
     def checkpoints_dir(self) -> str:
-        """Get the checkpoints directory for the current task, ensuring it exists."""
+        """Get the base checkpoints directory for the current task."""
         path = config.get_checkpoints_dir(self.task_id)
         os.makedirs(path, exist_ok=True)
         return path
 
     @property
-    def outputs_dir(self) -> str:
-        """Get the outputs directory for the current task, ensuring it exists."""
-        path = config.get_outputs_dir(self.task_id)
+    def micro_checkpoints_dir(self) -> str:
+        """Get the micro-checkpoints directory, ensuring it exists."""
+        path = os.path.join(self.checkpoints_dir, "micro_checkpoints")
         os.makedirs(path, exist_ok=True)
         return path
+
+    def start_operation(self, 
+                       operation_id: str,
+                       agent_name: str,
+                       steps: List[OperationStep],
+                       operation_state: Dict[str, Any] = None) -> Optional[str]:
+        """Start tracking a multi-step operation."""
+        if not config.ENABLE_MICRO_CHECKPOINTS:
+            print("⚠️  Micro-checkpoints disabled in config")
+            return None
         
-    def create_checkpoint(self, 
-                         phase: str, 
-                         step: str, 
-                         session_state: Dict[str, Any],  # Simple dict following ADK patterns
-                         metadata: Dict[str, Any] = None) -> str:
-        """Create a new checkpoint with current state."""
-        if not config.ENABLE_CHECKPOINTING:
+        progress = OperationProgress(
+            operation_id=operation_id,
+            agent_name=agent_name,
+            total_steps=len(steps),
+            completed_steps=[],
+            operation_state=operation_state or {}
+        )
+        
+        operation_path = os.path.join(self.micro_checkpoints_dir, f"operation_{operation_id}.json")
+        
+        operation_data = {
+            "progress": asdict(progress),
+            "steps": [asdict(step) for step in steps],
+            "checkpoints": []
+        }
+        
+        with open(operation_path, 'w') as f:
+            json.dump(operation_data, f, indent=2, default=str)
+        
+        self.operation_registry[operation_id] = progress
+        self.current_operation = operation_id
+        
+        print(f"🔍 Started micro-tracked operation: {operation_id} for agent {agent_name} with {len(steps)} steps.")
+        return operation_id
+
+    @contextmanager
+    def step_context(self, step: OperationStep):
+        """Context manager for executing a single step with automatic checkpointing."""
+        if not self.current_operation:
+            raise ValueError("No active operation - call start_operation() first")
+        
+        operation_id = self.current_operation
+        step.started_at = datetime.now(timezone.utc).isoformat()
+        
+        print(f"🔄 Executing step: {step.step_name}")
+        
+        try:
+            self._create_step_checkpoint(operation_id, step, "pre_execution")
+            yield step
+            step.completed_at = datetime.now(timezone.utc).isoformat()
+            self._mark_step_completed(operation_id, step.step_id)
+            self._create_step_checkpoint(operation_id, step, "completed")
+            print(f"✅ Step completed: {step.step_name}")
+        except Exception as e:
+            step.error_info = {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "retry_count": step.retry_count
+            }
+            self._create_step_checkpoint(operation_id, step, "failed")
+            self._mark_step_failed(operation_id, step.step_id, step.error_info)
+            print(f"❌ Step failed: {step.step_name} - {e}")
+            if step.retry_count < step.max_retries:
+                step.retry_count += 1
+                print(f"🔄 Retrying step (attempt {step.retry_count + 1}/{step.max_retries + 1})")
+                raise
+            else:
+                print(f"💀 Step failed permanently after {step.max_retries} retries")
+                raise
+
+    def resume_operation(self, operation_id: str) -> Optional[OperationProgress]:
+        """Resume a partially completed operation."""
+        operation_path = os.path.join(self.micro_checkpoints_dir, f"operation_{operation_id}.json")
+        if not os.path.exists(operation_path):
+            print(f"❌ Operation not found: {operation_id}")
+            return None
+        
+        try:
+            with open(operation_path, 'r') as f:
+                operation_data = json.load(f)
+            
+            progress = OperationProgress(**operation_data["progress"])
+            self.operation_registry[operation_id] = progress
+            self.current_operation = operation_id
+            
+            print(f"🔄 RESUMING MICRO-OPERATION: {operation_id}")
+            return progress
+        except Exception as e:
+            print(f"❌ Error resuming operation {operation_id}: {e}")
+            return None
+
+    def list_recoverable_operations(self) -> List[Dict[str, Any]]:
+        """List operations that can be resumed."""
+        operations = []
+        if not os.path.exists(self.micro_checkpoints_dir):
+            return operations
+        
+        for filename in os.listdir(self.micro_checkpoints_dir):
+            if filename.startswith("operation_") and filename.endswith(".json"):
+                try:
+                    with open(os.path.join(self.micro_checkpoints_dir, filename), 'r') as f:
+                        progress = json.load(f)["progress"]
+                    if len(progress["completed_steps"]) < progress["total_steps"]:
+                        operations.append({
+                            "operation_id": progress["operation_id"],
+                            "agent_name": progress["agent_name"],
+                            "progress": f"{len(progress['completed_steps'])}/{progress['total_steps']}",
+                            "failed_steps": len(progress.get("failed_steps", [])),
+                            "created_at": progress["created_at"],
+                            "current_step": progress.get("current_step")
+                        })
+                except Exception as e:
+                    print(f"⚠️  Error reading operation {filename}: {e}")
+        
+        return sorted(operations, key=lambda x: x["created_at"], reverse=True)
+
+    def save_state_snapshot(self, state: DOMISessionState, phase: str, status: str = "snapshot"):
+        """Save a complete snapshot of the application state and outputs."""
+        timestamp = datetime.now(timezone.utc).isoformat().replace(":", "-")
+        snapshot_name = f"state_{phase}_{status}_{timestamp}"
+        snapshot_dir = os.path.join(self.checkpoints_dir, snapshot_name)
+        os.makedirs(snapshot_dir, exist_ok=True)
+        
+        state_path = os.path.join(snapshot_dir, "domi_state.json")
+        with open(state_path, 'w') as f:
+            json.dump(state.dict(), f, indent=2)
+            
+        outputs_dir = config.get_outputs_dir(self.task_id)
+        if os.path.exists(outputs_dir):
+            shutil.copytree(outputs_dir, os.path.join(snapshot_dir, "outputs_snapshot"))
+            
+        print(f"[CheckpointManager]: Saved state snapshot to {snapshot_dir}")
+
+    def load_latest_snapshot(self) -> Optional[DOMISessionState]:
+        """Load the most recent state snapshot."""
+        snapshots = sorted(
+            [d for d in os.listdir(self.checkpoints_dir) if os.path.isdir(os.path.join(self.checkpoints_dir, d)) and d.startswith('state_')],
+            reverse=True
+        )
+        if not snapshots:
             return None
             
+        state_path = os.path.join(self.checkpoints_dir, snapshots[0], "domi_state.json")
+        if os.path.exists(state_path):
+            with open(state_path, 'r') as f:
+                return DOMISessionState(**json.load(f))
+        return None
+
+    def _create_step_checkpoint(self, operation_id: str, step: OperationStep, phase: str):
+        """Create a checkpoint for a specific step phase."""
         timestamp = datetime.now(timezone.utc).isoformat()
-        checkpoint_id = f"{phase}_{step}_{timestamp.replace(':', '-').replace('.', '-')}"
-        
-        # Use simple dict state following ADK patterns
-        # The original `isinstance(session_state, dict)` check is too strict for the ADK StateProxy.
-        # We now rely on duck-typing, checking for dict-like behavior.
-        if not hasattr(session_state, 'keys') or not hasattr(session_state, 'get'):
-            raise ValueError("session_state must be a dict-like object with keys() and get() methods")
-        
-        # Create a clean copy of state with only serializable values
-        state_dict = {}
-        # Iterate using .keys() and .get() for compatibility with ADK's StateProxy, which may not have .items().
-        for key in session_state.keys():
-            value = session_state.get(key)
-            # Only store simple, serializable types
-            if isinstance(value, (str, int, float, bool, list, dict, type(None))):
-                state_dict[key] = value
-            else:
-                print(f"⚠️  Skipping non-serializable state key '{key}': {type(value)}")
+        checkpoint_id = f"step_{operation_id}_{step.step_id}_{phase}_{timestamp.replace(':', '-').replace('.', '-')}"
         
         checkpoint_data = {
             "checkpoint_id": checkpoint_id,
-            "task_id": self.task_id,
-            "timestamp": timestamp,
+            "operation_id": operation_id,
+            "step_id": step.step_id,
             "phase": phase,
-            "step": step,
-            "session_state": state_dict,
-            "metadata": metadata or {},
-            "agent_execution_count": self.agent_execution_count,
-            "uses_adk_patterns": True  # Mark as using proper ADK patterns
+            "timestamp": timestamp,
+            "step_data": asdict(step),
+            "operation_state": self.operation_registry[operation_id].operation_state
         }
         
-        # Save checkpoint
-        checkpoint_path = os.path.join(self.checkpoints_dir, f"{checkpoint_id}.json")
+        checkpoint_path = os.path.join(self.micro_checkpoints_dir, f"{checkpoint_id}.json")
         with open(checkpoint_path, 'w') as f:
             json.dump(checkpoint_data, f, indent=2, default=str)
         
-        # Create snapshot of outputs directory
-        self._create_outputs_snapshot(checkpoint_id)
-        
-        # Update latest checkpoint pointer
-        self._update_latest_checkpoint(checkpoint_id)
-        
-        print(f"💾 CHECKPOINT SAVED: {checkpoint_id}")
         if config.VERBOSE_LOGGING:
-            print(f"   📁 Path: {checkpoint_path}")
-            print(f"   📊 Using ADK patterns - Session keys: {list(state_dict.keys())}")
-        
-        self.current_checkpoint = checkpoint_id
-        return checkpoint_id
-    
-    def load_checkpoint(self, checkpoint_id: str = None) -> Optional[Dict[str, Any]]:
-        """Load a specific checkpoint or the latest one.
-        
-        Args:
-            checkpoint_id: Specific checkpoint to load, or None for latest
-            
-        Returns:
-            Checkpoint data dict with simple state following ADK patterns
-        """
-        if not config.ENABLE_CHECKPOINTING:
-            return None
-            
-        if checkpoint_id is None:
-            checkpoint_id = self._get_latest_checkpoint()
-        
-        if not checkpoint_id:
-            print("📋 No checkpoints found for recovery")
-            return None
-        
-        checkpoint_path = os.path.join(self.checkpoints_dir, f"{checkpoint_id}.json")
-        
-        if not os.path.exists(checkpoint_path):
-            print(f"❌ Checkpoint not found: {checkpoint_id}")
-            return None
-        
-        try:
-            with open(checkpoint_path, 'r') as f:
-                checkpoint_data = json.load(f)
-            
-            # Restore outputs snapshot
-            self._restore_outputs_snapshot(checkpoint_id)
-            
-            print(f"🔄 CHECKPOINT LOADED: {checkpoint_id}")
-            print(f"   📅 Created: {checkpoint_data['timestamp']}")
-            print(f"   🎯 Phase: {checkpoint_data['phase']} → {checkpoint_data['step']}")
-            print(f"   🔢 Agent executions: {checkpoint_data['agent_execution_count']}")
-            
-            # Check if this uses new ADK patterns or legacy format
-            if checkpoint_data.get('uses_adk_patterns', False):
-                print(f"   ✅ Using proper ADK state patterns")
-            else:
-                print(f"   ⚠️  Legacy checkpoint format - state may need migration")
-            
-            self.current_checkpoint = checkpoint_id
-            self.agent_execution_count = checkpoint_data['agent_execution_count']
-            
-            return checkpoint_data
-            
-        except Exception as e:
-            print(f"❌ Error loading checkpoint {checkpoint_id}: {e}")
-            return None
-    
-    def list_checkpoints(self) -> List[Dict[str, Any]]:
-        """List all available checkpoints for the current task."""
-        checkpoints = []
-        
-        if not os.path.exists(self.checkpoints_dir):
-            return checkpoints
-        
-        for filename in os.listdir(self.checkpoints_dir):
-            if filename.endswith('.json') and not filename.startswith('latest_'):
-                checkpoint_path = os.path.join(self.checkpoints_dir, filename)
-                try:
-                    with open(checkpoint_path, 'r') as f:
-                        checkpoint_data = json.load(f)
-                    
-                    checkpoints.append({
-                        "checkpoint_id": checkpoint_data["checkpoint_id"],
-                        "timestamp": checkpoint_data["timestamp"],
-                        "phase": checkpoint_data["phase"],
-                        "step": checkpoint_data["step"],
-                        "agent_count": checkpoint_data.get("agent_execution_count", 0)
-                    })
-                except Exception as e:
-                    print(f"⚠️  Error reading checkpoint {filename}: {e}")
-        
-        # Sort by timestamp (newest first)
-        checkpoints.sort(key=lambda x: x["timestamp"], reverse=True)
-        return checkpoints
-    
-    def delete_checkpoint(self, checkpoint_id: str) -> bool:
-        """Delete a specific checkpoint and its associated files."""
-        checkpoint_path = os.path.join(self.checkpoints_dir, f"{checkpoint_id}.json")
-        snapshot_path = os.path.join(self.checkpoints_dir, f"outputs_snapshot_{checkpoint_id}")
-        
-        try:
-            if os.path.exists(checkpoint_path):
-                os.remove(checkpoint_path)
-            
-            if os.path.exists(snapshot_path):
-                shutil.rmtree(snapshot_path)
-            
-            print(f"🗑️  Checkpoint deleted: {checkpoint_id}")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error deleting checkpoint {checkpoint_id}: {e}")
-            return False
-    
-    def cleanup_old_checkpoints(self, keep_count: int = 10):
-        """Keep only the N most recent checkpoints."""
-        checkpoints = self.list_checkpoints()
-        
-        if len(checkpoints) <= keep_count:
-            return
-        
-        old_checkpoints = checkpoints[keep_count:]
-        deleted_count = 0
-        
-        for checkpoint in old_checkpoints:
-            if self.delete_checkpoint(checkpoint["checkpoint_id"]):
-                deleted_count += 1
-        
-        print(f"🧹 Cleaned up {deleted_count} old checkpoints (kept {keep_count} most recent)")
-    
-    def increment_agent_count(self):
-        """Increment the agent execution counter."""
-        self.agent_execution_count += 1
-    
-    def should_checkpoint(self) -> bool:
-        """Determine if a checkpoint should be created based on interval."""
-        if not config.ENABLE_CHECKPOINTING:
-            return False
-        return self.agent_execution_count % config.CHECKPOINT_INTERVAL == 0
-    
-    def get_recovery_info(self) -> Dict[str, Any]:
-        """Get information about available recovery options."""
-        checkpoints = self.list_checkpoints()
-        latest = self._get_latest_checkpoint()
-        
-        return {
-            "task_id": self.task_id,
-            "checkpoints_available": len(checkpoints),
-            "latest_checkpoint": latest,
-            "checkpoints_dir": self.checkpoints_dir,
-            "outputs_dir": self.outputs_dir,
-            "can_resume": latest is not None
-        }
-    
-    def _create_outputs_snapshot(self, checkpoint_id: str):
-        """Create a snapshot of the outputs directory."""
-        if not os.path.exists(self.outputs_dir):
-            return
-        
-        snapshot_path = os.path.join(self.checkpoints_dir, f"outputs_snapshot_{checkpoint_id}")
-        try:
-            shutil.copytree(self.outputs_dir, snapshot_path, dirs_exist_ok=True)
-        except Exception as e:
-            print(f"⚠️  Warning: Could not create outputs snapshot: {e}")
-    
-    def _restore_outputs_snapshot(self, checkpoint_id: str):
-        """Restore outputs directory from snapshot."""
-        snapshot_path = os.path.join(self.checkpoints_dir, f"outputs_snapshot_{checkpoint_id}")
-        
-        if not os.path.exists(snapshot_path):
-            print(f"⚠️  Warning: No outputs snapshot found for {checkpoint_id}")
-            return
-        
-        # FIX: Get the raw path string to avoid the property's side-effect of creating the directory.
-        # This makes the rm/copy operation atomic and robust.
-        outputs_path_str = config.get_outputs_dir(self.task_id)
+            print(f"   💾 Micro-checkpoint: {checkpoint_id}")
 
-        try:
-            # Clear current outputs directory if it exists
-            if os.path.exists(outputs_path_str):
-                shutil.rmtree(outputs_path_str)
-            
-            # Restore from snapshot
-            shutil.copytree(snapshot_path, outputs_path_str)
-            print(f"📂 Outputs restored from checkpoint snapshot")
-            
-        except Exception as e:
-            print(f"❌ Error restoring outputs snapshot: {e}")
-    
-    def _update_latest_checkpoint(self, checkpoint_id: str):
-        """Update the pointer to the latest checkpoint."""
-        latest_path = os.path.join(self.checkpoints_dir, "latest_checkpoint.txt")
-        with open(latest_path, 'w') as f:
-            f.write(checkpoint_id)
-    
-    def _get_latest_checkpoint(self) -> Optional[str]:
-        """Get the ID of the latest checkpoint."""
-        latest_path = os.path.join(self.checkpoints_dir, "latest_checkpoint.txt")
-        
-        if not os.path.exists(latest_path):
-            return None
-        
-        try:
-            with open(latest_path, 'r') as f:
-                checkpoint_id = f.read().strip()
-            
-            # Verify the checkpoint file exists
-            checkpoint_path = os.path.join(self.checkpoints_dir, f"{checkpoint_id}.json")
-            if os.path.exists(checkpoint_path):
-                return checkpoint_id
-            else:
-                return None
-                
-        except Exception:
-            return None
+    def _mark_step_completed(self, operation_id: str, step_id: str):
+        """Mark a step as completed in the operation progress."""
+        progress = self.operation_registry[operation_id]
+        if step_id not in progress.completed_steps:
+            progress.completed_steps.append(step_id)
+        progress.updated_at = datetime.now(timezone.utc).isoformat()
+        self._save_operation_progress(operation_id)
 
+    def _mark_step_failed(self, operation_id: str, step_id: str, error_info: Dict[str, Any]):
+        """Mark a step as failed in the operation progress."""
+        progress = self.operation_registry[operation_id]
+        if step_id not in progress.failed_steps:
+            progress.failed_steps.append(step_id)
+        progress.updated_at = datetime.now(timezone.utc).isoformat()
+        self._save_operation_progress(operation_id)
 
-# Global checkpoint manager instance
-checkpoint_manager = CheckpointManager()
+    def _save_operation_progress(self, operation_id: str):
+        """Save the current operation progress to disk."""
+        operation_path = os.path.join(self.micro_checkpoints_dir, f"operation_{operation_id}.json")
+        if os.path.exists(operation_path):
+            with open(operation_path, 'r') as f:
+                operation_data = json.load(f)
+            operation_data["progress"] = asdict(self.operation_registry[operation_id])
+            with open(operation_path, 'w') as f:
+                json.dump(operation_data, f, indent=2, default=str)
+
+    def mark_operation_complete(self, operation_id: str):
+        """Mark an operation as complete and archive it."""
+        if operation_id in self.operation_registry:
+            del self.operation_registry[operation_id]
+            if self.current_operation == operation_id:
+                self.current_operation = None
+            print(f"✓ Marked operation complete: {operation_id}")
+        
+        # Instead of deleting, archive the operation file for history
+        op_path = os.path.join(self.micro_checkpoints_dir, f"operation_{operation_id}.json")
+        if os.path.exists(op_path):
+            archive_dir = os.path.join(self.micro_checkpoints_dir, "completed")
+            os.makedirs(archive_dir, exist_ok=True)
+            shutil.move(op_path, os.path.join(archive_dir, f"operation_{operation_id}.json"))
+
+# Global instance for convenience, though direct instantiation is preferred for multi-tasking
+checkpoint_manager = CheckpointManager(config.TASK_ID)

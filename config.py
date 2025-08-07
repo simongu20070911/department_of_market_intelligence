@@ -35,11 +35,6 @@ EXECUTOR_MODEL = "gemini-2.5-flash"
 
 
 # --- Workflow Control ---
-MAX_PLAN_REFINEMENT_LOOPS = 5
-MAX_CODE_REFINEMENT_LOOPS = 3
-MAX_EXECUTION_CORRECTION_LOOPS = 2
-PARALLEL_VALIDATION_SAMPLES = 4
-MAX_ORCHESTRATOR_REFINEMENT_LOOPS = 5  # For implementation manifest refinement
 MAX_IMPLEMENTATION_ATTEMPTS = 3  # Max attempts for implementation phase on critical errors
 
 # --- Implementation Manifest Validation Fallback ---

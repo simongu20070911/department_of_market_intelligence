@@ -11,35 +11,9 @@ from ..agents.coder import get_coder_agent
 from ..agents.validators import get_junior_validator_agent, get_senior_validator_agent, MetaValidatorCheckAgent, get_parallel_final_validation_agent
 from .. import config
 from ..utils.model_loader import get_llm_model
+from ..utils.state_adapter import get_domi_state
+from ..utils import directory_manager
 
-
-
-
-def create_validation_loop(agent_to_validate: BaseAgent, loop_name: str, max_loops: int = 5) -> SequentialAgent:
-    """Helper factory to create a standard refinement/validation loop for an agent with final parallel validation."""
-    main_loop = LoopAgent(
-        name=loop_name,
-        max_iterations=max_loops,
-        sub_agents=[
-            SequentialAgent(
-                name=f"{agent_to_validate.name}_And_Validate_Seq",
-                sub_agents=[
-                    agent_to_validate,
-                    get_junior_validator_agent(),
-                    get_senior_validator_agent(),
-                    MetaValidatorCheckAgent(name=f"{agent_to_validate.name}_MetaCheck")
-                ]
-            )
-        ]
-    )
-    
-    return SequentialAgent(
-        name=f"{loop_name}_WithParallelValidation",
-        sub_agents=[
-            main_loop,
-            get_parallel_final_validation_agent()
-        ]
-    )
 
 class CoderWorkflowAgent(BaseAgent):
     """
@@ -87,33 +61,25 @@ class CoderWorkflowAgent(BaseAgent):
 
     async def _execute_single_coding_task(self, ctx: InvocationContext, task: dict) -> AsyncGenerator[Event, None]:
         """Execute a single coding task with validation."""
-        original_subtask = ctx.session.state.get('domi_coder_subtask')
-        original_artifact = ctx.session.state.get('domi_artifact_to_validate')
-        original_version = ctx.session.state.get('domi_validation_version')
-        original_context = ctx.session.state.get('domi_validation_context')
+        domi_state = get_domi_state(ctx)
+        original_subtask = domi_state.execution.current_subtask
+        original_artifact = domi_state.validation.artifact_to_validate
+        original_version = domi_state.validation.validation_version
+        original_context = domi_state.validation.validation_context
         
         try:
-            ctx.session.state['domi_coder_subtask'] = task
-            ctx.session.state['domi_artifact_to_validate'] = f"coder_output_{task['task_id']}"
-            ctx.session.state['domi_validation_version'] = 0
-            # Set the specific context for code validation
-            ctx.session.state['domi_validation_context'] = 'code_implementation'
+            domi_state.execution.current_subtask = task
+            domi_state.validation.artifact_to_validate = directory_manager.get_coder_output_path(domi_state.task_id, task['task_id'], 0)
+            domi_state.validation.validation_version = 0
+            domi_state.validation.validation_context = 'code_implementation'
             
-            if self._coder_validation_loop_template is None:
-                 self._coder_validation_loop_template = create_validation_loop(
-                    agent_to_validate=get_coder_agent(),
-                    loop_name="CoderValidationLoop",
-                    max_loops=config.MAX_CODE_REFINEMENT_LOOPS
-                )
-            
-            async for event in self._coder_validation_loop_template.run_async(ctx):
+            async for event in get_coder_agent().run_async(ctx):
                 yield event
         finally:
-            # Restore original state
-            ctx.session.state['domi_coder_subtask'] = original_subtask
-            ctx.session.state['domi_artifact_to_validate'] = original_artifact
-            ctx.session.state['domi_validation_version'] = original_version
-            ctx.session.state['domi_validation_context'] = original_context
+            domi_state.execution.current_subtask = original_subtask
+            domi_state.validation.artifact_to_validate = original_artifact
+            domi_state.validation.validation_version = original_version
+            domi_state.validation.validation_context = original_context
 
     async def _execute_parallel_coding_tasks(self, ctx: InvocationContext, tasks: list) -> AsyncGenerator[Event, None]:
         """Execute multiple coding tasks in parallel using ParallelAgent."""
@@ -134,48 +100,38 @@ class CoderWorkflowAgent(BaseAgent):
             def __init__(self, task_data: dict):
                 super().__init__(name=f"Coder_{task_data['task_id']}")
                 self._task_data = task_data
-                self._validation_loop = None
             
             async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
-                if self._validation_loop is None:
-                    self._validation_loop = create_validation_loop(
-                        agent_to_validate=get_coder_agent(),
-                        loop_name=f"CoderValidationLoop_{self._task_data['task_id']}",
-                        max_loops=config.MAX_CODE_REFINEMENT_LOOPS
-                    )
-                
-                original_subtask = ctx.session.state.get('domi_coder_subtask')
-                original_artifact = ctx.session.state.get('domi_artifact_to_validate')
-                original_version = ctx.session.state.get('domi_validation_version')
-                original_context = ctx.session.state.get('domi_validation_context')
+                domi_state = get_domi_state(ctx)
+                original_subtask = domi_state.execution..current_subtask
+                original_artifact = domi_state.validation.artifact_to_validate
+                original_version = domi_state.validation.validation_version
+                original_context = domi_state.validation.validation_context
                 
                 try:
-                    ctx.session.state['domi_coder_subtask'] = self._task_data
-                    ctx.session.state['domi_artifact_to_validate'] = f"coder_output_{self._task_data['task_id']}"
-                    ctx.session.state['domi_validation_version'] = 0
-                    # Set the specific context for code validation
-                    ctx.session.state['domi_validation_context'] = 'code_implementation'
+                    domi_state.execution.current_subtask = self._task_data
+                    domi_state.validation.artifact_to_validate = directory_manager.get_coder_output_path(domi_state.task_id, self._task_data['task_id'], 0)
+                    domi_state.validation.validation_version = 0
+                    domi_state.validation.validation_context = 'code_implementation'
                     
-                    async for event in self._validation_loop.run_async(ctx):
+                    async for event in get_coder_agent().run_async(ctx):
                         yield event
                 finally:
-                    # Restore original state
-                    ctx.session.state['domi_coder_subtask'] = original_subtask
-                    ctx.session.state['domi_artifact_to_validate'] = original_artifact
-                    ctx.session.state['domi_validation_version'] = original_version
-                    ctx.session.state['domi_validation_context'] = original_context
+                    domi_state.execution.current_subtask = original_subtask
+                    domi_state.validation.artifact_to_validate = original_artifact
+                    domi_state.validation.validation_version = original_version
+                    domi_state.validation.validation_context = original_context
         
         return TaskSpecificCoderAgent(task)
 
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         """Main entry point for the coder workflow."""
         print("CODER WORKFLOW: Starting parallel coding phase...")
-        manifest_path = ctx.session.state.get('domi_implementation_manifest_artifact')
+        domi_state = get_domi_state(ctx)
+        manifest_path = domi_state.execution.implementation_manifest_artifact
         
         if not manifest_path:
             print("CODER WORKFLOW: Error - No implementation manifest found in session state.")
-            # Need to yield something to make this an async generator
-            from google.adk.events import Event
             from google.genai.types import Content, Part
             yield Event(
                 author=self.name,
@@ -183,32 +139,22 @@ class CoderWorkflowAgent(BaseAgent):
             )
             return
         
-        # In dry run mode, just simulate the coding tasks
         if config.EXECUTION_MODE == "dry_run":
             print("CODER WORKFLOW: [DRY_RUN] Simulating parallel coding tasks...")
-            from google.adk.events import Event
             from google.genai.types import Content, Part
             yield Event(
                 author=self.name,
                 content=Content(parts=[Part(text="[DRY_RUN] Parallel coding tasks completed")])
             )
-            
-            # Set some mock coding tasks for state tracking - need to use metadata since direct assignment won't work with Pydantic
-            from ..utils.state_adapter import StateProxy
-            state_proxy = StateProxy(getattr(ctx.session, '_typed_state', None))
-            
-            # Store in metadata instead of direct assignment to avoid Pydantic validation
-            state_proxy['metadata']['mock_coding_tasks'] = [
+            domi_state.metadata['mock_coding_tasks'] = [
                 {'task_id': 'mock_task_1', 'description': 'Mock coding task 1', 'status': 'completed'},
                 {'task_id': 'mock_task_2', 'description': 'Mock coding task 2', 'status': 'completed'}
             ]
             return
         
-        # Read the manifest file to get tasks
         try:
             import os
             if os.path.exists(manifest_path):
-                # Use the smart JSON fixer to handle LLM-generated JSON issues
                 from ..tools.json_fixer import load_implementation_manifest
                 success, manifest_data, message = load_implementation_manifest(manifest_path)
                 
@@ -217,12 +163,10 @@ class CoderWorkflowAgent(BaseAgent):
                     print("CODER WORKFLOW: Attempting basic JSON parse as fallback...")
                     with open(manifest_path, 'r') as f:
                         manifest_content = f.read()
-                    # Parse tasks from manifest, expecting a specific structure
                     manifest_data = json.loads(manifest_content)
                 else:
                     print(f"CODER WORKFLOW: Successfully parsed manifest: {message}")
                 
-                # FIX: Handle case where manifest is a list instead of a dict
                 if isinstance(manifest_data, list):
                     print("CODER WORKFLOW: ⚠️  Warning: Manifest root is a list. Wrapping it in a standard dictionary structure.")
                     manifest_data = {
@@ -233,11 +177,9 @@ class CoderWorkflowAgent(BaseAgent):
                 
                 if not isinstance(manifest_data, dict):
                     print(f"CODER WORKFLOW: Error - Manifest at {manifest_path} is not a JSON object (dict), but a {type(manifest_data)}.")
-                    # SET FAILURE STATE to halt the parent workflow
-                    ctx.session.state['domi_execution_status'] = 'critical_error'
-                    ctx.session.state['domi_error_type'] = 'ManifestFormatError'
-                    ctx.session.state['domi_error_details'] = f"Manifest root is a {type(manifest_data)}, expected a dict."
-                    from google.adk.events import Event
+                    domi_state.execution.status = 'critical_error'
+                    domi_state.execution.error_info.error_type = 'ManifestFormatError'
+                    domi_state.execution.error_info.details = f"Manifest root is a {type(manifest_data)}, expected a dict."
                     from google.genai.types import Content, Part
                     yield Event(
                         author=self.name,
@@ -245,19 +187,15 @@ class CoderWorkflowAgent(BaseAgent):
                     )
                     return
 
-                # Try multiple possible structures for backward compatibility
-                tasks = manifest_data.get("tasks", [])  # Direct tasks array (current format)
+                tasks = manifest_data.get("tasks", [])
                 if not tasks:
-                    # Fallback to nested structure (legacy format)
                     implementation_plan = manifest_data.get("implementation_plan", {})
                     tasks = implementation_plan.get("parallel_tasks", [])
                 
-                # Filter for actual coding tasks (ones that need code generation)
                 coding_tasks = [t for t in tasks if 'write' in t.get('task_id', '').lower() or 'script' in t.get('description', '').lower()]
                 
                 if not coding_tasks:
                     print(f"CODER WORKFLOW: No coding tasks found in manifest (found {len(tasks)} total tasks, but none require code generation).")
-                    from google.adk.events import Event
                     from google.genai.types import Content, Part
                     yield Event(
                         author=self.name,
@@ -265,7 +203,6 @@ class CoderWorkflowAgent(BaseAgent):
                     )
                     return
                 
-                # Execute tasks with DAG parallelism
                 async for event in self._execute_tasks_with_dag_parallelism(ctx, coding_tasks):
                     yield event
                     
@@ -273,7 +210,6 @@ class CoderWorkflowAgent(BaseAgent):
                 
             else:
                 print(f"CODER WORKFLOW: Manifest file not found: {manifest_path}")
-                from google.adk.events import Event
                 from google.genai.types import Content, Part
                 yield Event(
                     author=self.name,
@@ -282,10 +218,9 @@ class CoderWorkflowAgent(BaseAgent):
                 
         except json.JSONDecodeError as e:
             print(f"CODER WORKFLOW: Error decoding JSON from manifest: {e}")
-            ctx.session.state['domi_execution_status'] = 'critical_error'
-            ctx.session.state['domi_error_type'] = 'ManifestFormatError'
-            ctx.session.state['domi_error_details'] = f"Could not decode JSON from {manifest_path}."
-            from google.adk.events import Event
+            domi_state.execution.status = 'critical_error'
+            domi_state.execution.error_info.error_type = 'ManifestFormatError'
+            domi_state.execution.error_info.details = f"Could not decode JSON from {manifest_path}."
             from google.genai.types import Content, Part
             yield Event(
                 author=self.name,
@@ -293,17 +228,14 @@ class CoderWorkflowAgent(BaseAgent):
             )
         except Exception as e:
             print(f"CODER WORKFLOW: Error reading manifest: {e}")
-            ctx.session.state['domi_execution_status'] = 'critical_error'
-            ctx.session.state['domi_error_type'] = 'ManifestReadError'
-            ctx.session.state['domi_error_details'] = str(e)
-            from google.adk.events import Event
+            domi_state.execution.status = 'critical_error'
+            domi_state.execution.error_info.error_type = 'ManifestReadError'
+            domi_state.execution.error_info.details = str(e)
             from google.genai.types import Content, Part
             yield Event(
                 author=self.name,
                 content=Content(parts=[Part(text=f"Error reading manifest: {e}")])
             )
-
-
 
 def get_coder_workflow() -> CoderWorkflowAgent:
     """Factory function to create a CoderWorkflowAgent."""

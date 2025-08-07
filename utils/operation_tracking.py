@@ -7,9 +7,9 @@ import time
 from typing import Callable, Any, Dict, List, Optional
 from contextlib import contextmanager
 
-from .micro_checkpoint_manager import (
-    micro_checkpoint_manager, 
-    OperationStep, 
+from .checkpoint_manager import (
+    checkpoint_manager,
+    OperationStep,
     OperationProgress
 )
 from .. import config
@@ -60,14 +60,14 @@ def recoverable_operation(operation_id: str = None,
             )
             
             # Start operation tracking
-            micro_checkpoint_manager.start_operation(
+            checkpoint_manager.start_operation(
                 operation_id=operation_id,
                 agent_name=agent_name,
                 steps=[step]
             )
             
             # Execute with step context
-            with micro_checkpoint_manager.step_context(step):
+            with checkpoint_manager.step_context(step):
                 result = await func(*args, **kwargs)
                 return result
         
@@ -96,7 +96,7 @@ def tracked_operation(operation_id: str,
                     pass
     """
     # Start the operation
-    actual_operation_id = micro_checkpoint_manager.start_operation(
+    actual_operation_id = checkpoint_manager.start_operation(
         operation_id=operation_id,
         agent_name=agent_name,
         steps=steps,
@@ -104,10 +104,10 @@ def tracked_operation(operation_id: str,
     )
     
     try:
-        yield micro_checkpoint_manager
+        yield checkpoint_manager
     finally:
         # Operation completed or failed
-        progress = micro_checkpoint_manager.operation_registry.get(actual_operation_id)
+        progress = checkpoint_manager.operation_registry.get(actual_operation_id)
         if progress:
             print(f"🏁 Operation {operation_id} finished:")
             print(f"   ✅ Completed: {len(progress.completed_steps)}/{progress.total_steps}")
@@ -229,7 +229,7 @@ def create_data_processing_operation(operation_id: str,
 # Recovery utilities
 def resume_failed_operations(task_id: str = None) -> List[str]:
     """Resume all failed operations for a task."""
-    manager = micro_checkpoint_manager
+    manager = checkpoint_manager
     if task_id:
         manager.task_id = task_id
     
@@ -251,7 +251,7 @@ def resume_failed_operations(task_id: str = None) -> List[str]:
 
 def get_operation_recovery_report(task_id: str = None) -> Dict[str, Any]:
     """Get a detailed report of recoverable operations."""
-    manager = micro_checkpoint_manager
+    manager = checkpoint_manager
     if task_id:
         manager.task_id = task_id
     

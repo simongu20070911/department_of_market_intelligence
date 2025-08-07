@@ -113,8 +113,6 @@ def test_full_context_aware_system():
     print("-"*80)
     
     print(f"   Context-Aware Validation: {'✅ ENABLED' if config.ENABLE_CONTEXT_AWARE_VALIDATION else '❌ DISABLED'}")
-    print(f"   Parallel Validation Samples: {config.PARALLEL_VALIDATION_SAMPLES}")
-    print(f"   Max Refinement Loops: {config.MAX_PLAN_REFINEMENT_LOOPS}")
     
     # Test workflow selection
     print(f"\n🔄 WORKFLOW SELECTION TEST")

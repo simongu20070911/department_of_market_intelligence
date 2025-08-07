@@ -10,11 +10,8 @@ from google.adk.events import Event
 from .. import config
 from ..utils.callbacks import ensure_end_of_output
 from ..utils.model_loader import get_llm_model
-from ..utils.operation_tracking import (
-    create_file_generation_operation,
-    OperationStep
-)
-from ..utils.micro_checkpoint_manager import micro_checkpoint_manager
+from ..utils.state_adapter import get_domi_state
+from ..utils.checkpoint_manager import CheckpointManager, TrackedOperation
 from ..prompts.definitions.chief_researcher import CHIEF_RESEARCHER_INSTRUCTION
 
 
@@ -32,234 +29,102 @@ class MicroCheckpointChiefResearcher(LlmAgent):
     
     async def _run_async_impl(self, ctx):
         """Enhanced research planning with fine-grained checkpointing."""
-        
+        domi_state = get_domi_state(ctx)
+        task_id = domi_state.task_id
+        checkpoint_manager = CheckpointManager(task_id)
+
         # Check if micro-checkpoints are enabled
         if not config.ENABLE_MICRO_CHECKPOINTS:
-            print("🔄 Micro-checkpoints disabled - running standard execution")
+            print("[Chief_Researcher]: Micro-checkpoints disabled, running standard execution.")
             async for event in super()._run_async_impl(ctx):
                 yield event
             return
         
-        # Use a unique key to track if this pre-planning has been done for the current task version
-        plan_version = ctx.session.state.get('domi_plan_version', 0)
-        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
+        plan_version = domi_state.validation.validation_version
         planning_executed_key = f"chief_researcher_planning_executed_v{plan_version}_for_{task_id}"
 
-        if ctx.session.state.get(planning_executed_key):
-            print("🔄 Micro-checkpoint planning already completed for this version. Running LLM agent directly.")
+        if domi_state.metadata.get(planning_executed_key):
+            print(f"[Chief_Researcher]: Micro-checkpoint planning already completed for version {plan_version}. Running LLM agent directly.")
             async for event in super()._run_async_impl(ctx):
                 yield event
             return
         
-        # Check for resumable operations first
-        recoverable_ops = micro_checkpoint_manager.list_recoverable_operations()
-        researcher_ops = [op for op in recoverable_ops if "Chief_Researcher" in op.get("agent_name", "")]
+        # Check for resumable operations
+        recoverable_ops = checkpoint_manager.list_recoverable_operations(agent_name="Chief_Researcher")
         
-        # Check if we're in a revision scenario (refine_plan task)
-        current_task = ctx.session.state.get('domi_current_task', 'generate_initial_plan')
-        current_phase = ctx.session.state.get('domi_current_phase', 'planning')
-        
-        # Only resume operations if we're in planning phase and not starting a new revision
-        if researcher_ops and config.MICRO_CHECKPOINT_AUTO_RESUME and current_task != 'refine_plan' and current_phase == 'planning':
-            print(f"🔄 Found {len(researcher_ops)} recoverable research operations")
-            for op in researcher_ops:
-                print(f"   • {op['operation_id']}: {op['progress']} steps completed")
-            
-            # Resume operations automatically
-            for op_info in researcher_ops:
-                async for event in self._resume_operation(ctx, op_info):
-                    yield event
+        current_task = domi_state.current_task_description
+        if recoverable_ops and config.MICRO_CHECKPOINT_AUTO_RESUME and current_task != 'refine_plan':
+            print(f"[Chief_Researcher]: Found {len(recoverable_ops)} recoverable research operations. Resuming...")
+            for op_info in recoverable_ops:
+                operation = checkpoint_manager.resume_operation(op_info['operation_id'])
+                if operation:
+                    await self._execute_tracked_operation(ctx, operation)
             return
-        elif current_task == 'refine_plan' and researcher_ops:
-            print(f"🔄 Found {len(researcher_ops)} previous research operations, but starting fresh for revision v{plan_version}")
-            # Clean up old failed operations since we're doing a revision
-            for op in researcher_ops:
-                micro_checkpoint_manager.mark_operation_complete(op['operation_id'])
-                print(f"   ✓ Cleaned up old operation: {op['operation_id']}")
+        elif current_task == 'refine_plan' and recoverable_ops:
+            print(f"[Chief_Researcher]: Starting fresh for revision v{plan_version}, cleaning up old operations.")
+            for op in recoverable_ops:
+                checkpoint_manager.mark_operation_complete(op['operation_id'])
         
-        # For refine_plan task, skip micro-checkpoint planning and go directly to LLM
         if current_task == 'refine_plan':
-            print(f"📝 Refining plan to version {plan_version} based on validation feedback")
+            print(f"[Chief_Researcher]: Refining plan to version {plan_version} based on validation feedback.")
             async for event in super()._run_async_impl(ctx):
                 yield event
             return
         
-        # Get task info from session state
-        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
         outputs_dir = config.get_outputs_dir(task_id)
-        
-        # Define research planning steps
         research_steps = [
-            {
-                "filename": f"{outputs_dir}/planning/research_plan_v{plan_version}.md",
-                "step_name": "Generate Initial Research Plan",
-                "description": "Create a comprehensive research methodology and approach based on the main task. This should be the core document.",
-                "timeout": 240,
-                "max_retries": 2
-            },
-            {
-                "filename": f"{outputs_dir}/planning/research_scope_v{plan_version}.md",
-                "step_name": "Define Research Scope",
-                "description": "Establish clear boundaries, limitations, and out-of-scope items for the research to ensure focus.",
-                "timeout": 180,
-                "max_retries": 2
-            },
-            {
-                "filename": f"{outputs_dir}/planning/methodology_validation_plan_v{plan_version}.md",
-                "step_name": "Plan for Methodology Validation",
-                "description": "Outline the specific steps and criteria that will be used to review and validate the proposed research approach, including statistical tests and data hygiene checks.",
-                "timeout": 200,
-                "max_retries": 1
-            }
+            {"step_name": "Generate Initial Research Plan", "input_state": {"filename": f"{outputs_dir}/planning/research_plan_v{plan_version}.md", "description": "Create a comprehensive research methodology..."}},
+            {"step_name": "Define Research Scope", "input_state": {"filename": f"{outputs_dir}/planning/research_scope_v{plan_version}.md", "description": "Establish clear boundaries and limitations..."}},
+            {"step_name": "Plan for Methodology Validation", "input_state": {"filename": f"{outputs_dir}/planning/methodology_validation_plan_v{plan_version}.md", "description": "Outline steps to validate the research approach..."}},
         ]
         
-        # Create tracked operation for research planning
         operation_id = f"research_planning_{task_id}_{int(asyncio.get_event_loop().time())}"
+        operation = checkpoint_manager.create_operation(operation_id, "Chief_Researcher", research_steps)
         
-        research_operation = create_file_generation_operation(
-            operation_id=operation_id,
-            agent_name="Chief_Researcher",
-            files_to_generate=research_steps
-        )
+        await self._execute_tracked_operation(ctx, operation)
         
-        # Execute research planning with fine-grained tracking
-        print(f"📋 Starting research planning with {len(research_steps)} tracked steps in PARALLEL")
-        
-        with research_operation.execute() as (tracker, steps):
-            
-            # --- CHANGE: Create a list of concurrent tasks instead of a sequential loop ---
-            tasks = [
-                self._run_tracked_step(tracker, step, ctx) for step in steps
-            ]
-            
-            # --- CHANGE: Execute all tasks in parallel and gather results ---
-            # Using return_exceptions=True ensures that one failed step doesn't
-            # stop the others, which aligns perfectly with your micro-checkpointing.
-            planning_results_with_errors = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Filter out successful results from potential exceptions
-            planning_results = [res for res in planning_results_with_errors if not isinstance(res, Exception)]
-            
-            # Create planning summary
-            await self._create_planning_summary(ctx, planning_results)
-            
-            # Mark this version of planning as complete before calling the LLM
-            ctx.session.state[planning_executed_key] = True
-            
-            # Run standard LLM agent to synthesize and finalize the research plan
-            print("🤖 Running LLM agent to synthesize and finalize research planning...")
-            async for event in super()._run_async_impl(ctx):
-                yield event
-
-    async def _run_tracked_step(self, tracker, step, ctx):
-        """Helper coroutine to wrap a single step's execution with its tracking context."""
-        try:
-            with tracker.step_context(step):
-                step_config = step.input_state
-                result = await self._execute_planning_step(ctx, step_config)
-                print(f"✅ Completed planning step: {step_config.get('step_name', 'Unknown')}")
-                return result
-        except Exception as e:
-            print(f"❌ Planning step failed: {step.step_name} - {e}")
-            # The exception will be caught by asyncio.gather
-            raise
-
-    async def _resume_operation(self, ctx: InvocationContext, op_info: Dict[str, Any]) -> AsyncGenerator[Event, None]:
-        """Resume a failed or incomplete research operation."""
-        
-        operation_id = op_info["operation_id"]
-        print(f"🔄 Resuming research operation: {operation_id}")
-        
-        # Resume the operation
-        progress = micro_checkpoint_manager.resume_operation(operation_id)
-        if not progress:
-            return
-        
-        # Load operation data to get remaining steps
-        operation_path = os.path.join(
-            micro_checkpoint_manager.micro_checkpoints_dir,
-            f"operation_{operation_id}.json"
-        )
-        
-        with open(operation_path, 'r') as f:
-            operation_data = json.load(f)
-        
-        all_steps = [OperationStep(**step_data) for step_data in operation_data["steps"]]
-        
-        # Find remaining steps
-        remaining_steps = [
-            step for step in all_steps
-            if step.step_id not in progress.completed_steps
-            and step.step_id not in progress.failed_steps
-        ]
-        
-        print(f"   📋 Resuming {len(remaining_steps)} remaining steps")
-        
-        # Continue execution from where we left off
-        planning_results = []
-        
-        for step in remaining_steps:
-            try:
-                with micro_checkpoint_manager.step_context(step):
-                    step_config = step.input_state
-                    result = await self._execute_planning_step(ctx, step_config)
-                    planning_results.append(result)
-                    
-                    print(f"✅ Resumed planning step: {step_config.get('step_name', 'Unknown')}")
-                    
-            except Exception as e:
-                print(f"❌ Resumed planning step failed: {step.step_name} - {e}")
-                continue
-        
-        if planning_results:
-            await self._create_planning_summary(ctx, planning_results)
-
-        # FIX: Add a check to halt if the resumed operation has failed steps.
-        # This prevents the agent from proceeding with a broken state.
-        progress = micro_checkpoint_manager.operation_registry.get(operation_id)
-        if progress and progress.failed_steps:
-            print(f"⚠️ WARNING: Resumed operation '{operation_id}' has {len(progress.failed_steps)} failed steps.")
-            
-            # Check if we're in a retry loop after validation feedback
-            validation_status = ctx.session.state.get('domi_validation_status', '')
-            revision_reason = ctx.session.state.get('domi_revision_reason', '')
-            
-            if validation_status in ['needs_revision', 'needs_revision_after_parallel_validation']:
-                if revision_reason == 'parallel_validation_critical_issues':
-                    issues_count = ctx.session.state.get('domi_parallel_validation_issues_count', 0)
-                    print(f"♻️ Detected retry after parallel validation ({issues_count} critical issues) - starting fresh")
-                else:
-                    print("♻️ Detected retry after validation feedback - starting fresh instead of resuming failed operation")
-                # Don't resume the failed operation, fall through to run fresh LLM agent
-            else:
-                print(f"❌ CRITICAL: Halting due to failed steps in operation.")
-                # Stop the generator, effectively halting this agent's execution.
-                return
-
-        # After resuming, run the final synthesis step
-        print("🤖 Running LLM agent to synthesize and finalize resumed research planning...")
+        domi_state.metadata[planning_executed_key] = True
+        print("[Chief_Researcher]: Running LLM agent to synthesize and finalize research planning...")
         async for event in super()._run_async_impl(ctx):
             yield event
+
+    async def _execute_tracked_operation(self, ctx: InvocationContext, operation: TrackedOperation):
+        """Executes all steps in a tracked operation."""
+        print(f"[Chief_Researcher]: Executing operation '{operation.operation_id}' with {len(operation.get_remaining_steps())} steps.")
+        
+        with operation as (tracker, steps):
+            tasks = [self._run_step(step, ctx, tracker) for step in steps]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            successful_results = [res for res in results if not isinstance(res, Exception)]
+            await self._create_planning_summary(ctx, successful_results, operation.operation_id)
+
+    async def _run_step(self, step, ctx, tracker):
+        """Executes a single step within a tracked context."""
+        with tracker.step_context(step):
+            try:
+                result = await self._execute_planning_step(ctx, step.input_state)
+                print(f"[Chief_Researcher]: ✅ Completed step: {step.step_name}")
+                return result
+            except Exception as e:
+                print(f"[Chief_Researcher]: ❌ Step failed: {step.step_name} - {e}")
+                raise
     
     async def _execute_planning_step(self, ctx: InvocationContext, step_config: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a single, real planning step by generating a file."""
         from ..utils.task_loader import load_task_description
-        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
+        from ..prompts.definitions.chief_researcher_steps import CHIEF_RESEARCHER_STEP_INSTRUCTION
+        
+        domi_state = get_domi_state(ctx)
+        task_id = domi_state.task_id
         task_description = load_task_description(task_id)
 
-        prompt_template = f"""
-        You are the Chief Researcher. Your current high-level task is:
-        ---
-        {task_description}
-        ---
-        You are now performing one specific sub-step of the planning phase.
-        
-        Sub-step Name: {step_config['step_name']}
-        Sub-step Goal: {step_config['description']}
-        
-        Generate the complete and detailed markdown content for the document: `{os.path.basename(step_config['filename'])}`.
-        Your response must ONLY be the raw markdown content for this file. Do not include any other commentary, greetings, or explanations.
-        """
+        prompt_template = CHIEF_RESEARCHER_STEP_INSTRUCTION.format(
+            task_description=task_description,
+            step_name=step_config.get('step_name', 'Unknown Step'),
+            description=step_config.get('description', 'No description.'),
+            filename=os.path.basename(step_config.get('filename', 'unknown.md'))
+        )
         return await self._execute_step_with_llm(ctx, step_config, prompt_template)
 
     def _find_tool(self, tool_name: str):
@@ -282,7 +147,7 @@ class MicroCheckpointChiefResearcher(LlmAgent):
         step_name = step_config.get("step_name", "Unknown_Step")
         filename = step_config.get("filename", "unknown.md")
         
-        print(f"   🧠 Generating content for: {step_name}")
+        print(f"[Chief_Researcher]:    - Generating content for: {step_name}")
         
         # --- FIX: Use the standard ADK method for calling the model ---
         request_content = Content(parts=[Part(text=prompt)])
@@ -303,7 +168,7 @@ class MicroCheckpointChiefResearcher(LlmAgent):
                 content_to_write = content_to_write[:-3].strip()
 
         # Write the content to the specified file using the agent's tool
-        print(f"   ✍️ Writing content to: {filename}")
+        print(f"[Chief_Researcher]:    - Writing content to: {filename}")
         write_tool = self._find_tool("write_file")
         
         # --- FIX: Correctly iterate over the async generator from run_async ---
@@ -325,51 +190,42 @@ class MicroCheckpointChiefResearcher(LlmAgent):
             "config": step_config
         }
     
-    async def _create_planning_summary(self, ctx: InvocationContext, results: List[Dict[str, Any]]):
+    async def _create_planning_summary(self, ctx: InvocationContext, results: List[Dict[str, Any]], operation_id: str):
         """Create a summary of all planning steps."""
-        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
+        domi_state = get_domi_state(ctx)
+        task_id = domi_state.task_id
         outputs_dir = config.get_outputs_dir(task_id)
         
         summary = {
             "domi_task_id": task_id,
+            "operation_id": operation_id,
             "total_planning_steps": len(results),
             "successful_steps": len([r for r in results if r.get("status") == "completed"]),
-            "failed_steps": len([r for r in results if r.get("status") == "failed"]),
+            "failed_steps": len([r for r in results if r.get("status") != "completed"]),
             "planning_details": results,
-            "micro_checkpoints_used": True,
-            "recovery_info": {
-                "operation_id": micro_checkpoint_manager.current_operation,
-                "checkpoints_created": len(results)
-            }
+            "micro_checkpoints_used": True
         }
         
-        summary_path = os.path.join(outputs_dir, "planning", "micro_checkpoint_planning_summary.json")
+        summary_path = os.path.join(outputs_dir, "planning", f"planning_summary_{operation_id}.json")
         os.makedirs(os.path.dirname(summary_path), exist_ok=True)
         
         with open(summary_path, 'w') as f:
             json.dump(summary, f, indent=2, default=str)
         
         # Update session state
-        ctx.session.state['domi_planning_summary_artifact'] = summary_path
-        ctx.session.state['domi_micro_checkpoints_enabled'] = True
+        domi_state.metadata['planning_summary_artifact'] = summary_path
+        domi_state.metadata['micro_checkpoints_enabled'] = True
         
-        print(f"💾 Planning micro-checkpoint summary: {summary_path}")
+        print(f"[Chief_Researcher]: 💾 Planning micro-checkpoint summary created at: {summary_path}")
 
 
 def get_chief_researcher_agent():
     """Create Chief Researcher agent with micro-checkpoint support."""
     agent_name = "Chief_Researcher"
     
-    # Only use mock agent in actual dry_run mode with LLM skipping
-    if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
-        from ..tools.mock_llm_agent import create_mock_llm_agent
-        return create_mock_llm_agent(name=agent_name)
-    
-    # Get tools from the registry
     from ..tools.toolset_registry import toolset_registry
     desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
     
-    # Wrap in list if it's a real MCP toolset, mock tools are already a list
     tools = [desktop_commander_toolset] if toolset_registry.is_using_real_mcp() else desktop_commander_toolset
     
     def instruction_provider(ctx=None) -> str:

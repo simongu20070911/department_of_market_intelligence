@@ -62,6 +62,7 @@ from .workflows.root_workflow_context_aware import RootWorkflowAgentContextAware
 from . import config
 from .config import TASKS_DIR, VERBOSE_LOGGING
 from .utils.task_loader import load_task_description, validate_task_id, get_task_file_path, create_task_loading_summary
+from .utils.state_model import DOMISessionState
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -109,11 +110,6 @@ async def initialize_toolset():
             )
         )
         
-        # Configure Desktop Commander limits after creating toolset
-        # This is now handled by the tool's persistent configuration
-        # and does not need to be set on every run.
-        # The erroneous invoke_tool call is removed to prevent crashes.
-        
         toolset_registry.set_desktop_commander_toolset(toolset, is_real_mcp=True)
         print(f"✅ Successfully initialized {config.EXECUTION_MODE} toolset.")
 
@@ -132,11 +128,9 @@ async def main(resume_from_checkpoint: str = None):
     """
     from .utils.checkpoint_manager import checkpoint_manager
     
-    # Initialize ADK services for this run
     session_service = InMemorySessionService()
     artifact_service = InMemoryArtifactService()
 
-    # Check for resume capability
     if resume_from_checkpoint or (resume_from_checkpoint is None and checkpoint_manager.get_recovery_info()["can_resume"]):
         if resume_from_checkpoint is None:
             resume_from_checkpoint = checkpoint_manager._get_latest_checkpoint()
@@ -148,8 +142,7 @@ async def main(resume_from_checkpoint: str = None):
             print(f"📋 Resuming Task ID: {checkpoint_data['task_id']}")
             print(f"🎯 Resume Point: {checkpoint_data['phase']} → {checkpoint_data['step']}")
             
-            # Restore simple session state from checkpoint - following ADK patterns
-            initial_state = checkpoint_data['session_state']  # This is already a simple dict
+            initial_state = DOMISessionState.parse_obj(checkpoint_data['session_state'])
             checkpoint_manager.agent_execution_count = checkpoint_data['agent_execution_count']
         else:
             print("❌ Failed to load checkpoint, starting fresh")
@@ -158,10 +151,8 @@ async def main(resume_from_checkpoint: str = None):
         print(f"🚀 STARTING NEW TASK: {config.TASK_ID}")
         initial_state = None
 
-    # Initialize the global toolset before creating any agents
     await initialize_toolset()
 
-    # The root of our agentic system
     if config.USE_SIMPLIFIED_WORKFLOW:
         print("🔍 Using simplified workflow with centralized phase management")
         from .workflows.root_workflow_simplified import get_simplified_root_workflow
@@ -177,9 +168,7 @@ async def main(resume_from_checkpoint: str = None):
         artifact_service=artifact_service,
     )
 
-    # Prepare the initial session state with explicit task loading
     if initial_state is None:
-        # Validate task ID and load task content
         if not validate_task_id(config.TASK_ID):
             print(f"❌ ERROR: Task '{config.TASK_ID}' not found!")
             print("\n" + create_task_loading_summary())
@@ -191,7 +180,6 @@ async def main(resume_from_checkpoint: str = None):
         print(f"   • Task File: {task_file_path}")
         print(f"   • Tasks Directory: {TASKS_DIR}")
         
-        # Verify task file exists and is readable
         try:
             task_content = load_task_description(config.TASK_ID)
             print(f"   • Task Content: {len(task_content)} characters, {task_content.count(chr(10)) + 1} lines")
@@ -199,22 +187,20 @@ async def main(resume_from_checkpoint: str = None):
             print(f"❌ ERROR: Failed to load task '{config.TASK_ID}': {e}")
             return
         
-        initial_state = {
-            "task_id": config.TASK_ID,
-            "task_file_path": task_file_path
-        }
+        initial_state = DOMISessionState(
+            task_id=config.TASK_ID,
+            metadata={"task_file_path": task_file_path}
+        )
         print(f"--- Starting Research Task from {task_file_path} ---")
     else:
-        print(f"--- Resuming Research Task: {initial_state.get('task_file_path', 'Unknown')} ---")
+        print(f"--- Resuming Research Task: {initial_state.metadata.get('task_file_path', 'Unknown')} ---")
     
-    # Create a session for this research task
     session = await session_service.create_session(
         app_name="ULTRATHINK_QUANTITATIVE",
         user_id="quant_team",
         state=initial_state
     )
     
-    # Start the process with an initial message (can be empty)
     start_message = Content(parts=[Part(text="Begin the research process.")])
     
     try:
@@ -223,17 +209,14 @@ async def main(resume_from_checkpoint: str = None):
             user_id=session.user_id,
             new_message=start_message
         ):
-            # You can process and print events here for real-time monitoring
             if config.STREAMING_ENABLED:
                 if event.content and event.content.parts:
                     for part in event.content.parts:
                         if part.text:
                             if event.partial:
-                                # Print partial text on the same line
                                 sys.stdout.write(part.text)
                                 sys.stdout.flush()
                             else:
-                                # Once the full text is received, print a newline
                                 print(f"\n[{event.author}]: {part.text.strip()}")
                         if part.function_call:
                             print(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
@@ -245,21 +228,18 @@ async def main(resume_from_checkpoint: str = None):
                         if part.function_call:
                             print(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
     except (Exception, BaseExceptionGroup) as e:
-        # Handle workflow execution errors and MCP cleanup issues
         if "stdio_client" in str(e) or "cancel scope" in str(e):
             print(f"\n⚠️  MCP connection cleanup (non-fatal)")
         else:
             print(f"\n❌ Workflow execution error: {e}")
-            # Add traceback for debugging
             import traceback
             traceback.print_exc()
         
-        # Attempt graceful cleanup
         try:
             from .tools.toolset_registry import toolset_registry
             toolset_registry.cleanup()
         except Exception:
-            pass  # Suppress cleanup errors
+            pass
     finally:
         print("\n🔚 Research task completed.")
 
@@ -337,7 +317,6 @@ def apply_cli_overrides(args):
     import os
     from . import config
     
-    # Override execution mode
     if args.mode:
         config.EXECUTION_MODE = args.mode
         config.DRY_RUN_MODE = (args.mode == "dry_run")
@@ -345,19 +324,16 @@ def apply_cli_overrides(args):
         os.environ["EXECUTION_MODE"] = args.mode
         print(f"🔧 Execution mode set to: {args.mode}")
     
-    # Override task ID
     if args.task:
         config.TASK_ID = args.task
         os.environ["TASK_ID"] = args.task
         print(f"📋 Task ID set to: {args.task}")
     
-    # Override sandbox directory
     if args.sandbox_dir:
         config.SANDBOX_BASE_DIR = args.sandbox_dir
         os.environ["SANDBOX_BASE_DIR"] = args.sandbox_dir
         print(f"📁 Sandbox directory set to: {args.sandbox_dir}")
     
-    # Override cleanup setting
     if args.no_cleanup:
         config.AUTO_CLEANUP_SANDBOX = False
         os.environ["AUTO_CLEANUP_SANDBOX"] = "false"
@@ -415,7 +391,6 @@ def validate_execution_mode():
         return False
     
     if config.EXECUTION_MODE == "sandbox":
-        # Assuming sandbox is always safe for now as we removed the dedicated check
         pass
     
     return True
@@ -428,15 +403,12 @@ def validate_configuration():
     print("🔍 VALIDATING CONFIGURATION")
     print("="*50)
     
-    # Print execution mode info
     print_execution_mode_warning()
     
-    # Validate execution mode
     if not validate_execution_mode():
         print("❌ Configuration validation failed")
         return False
     
-    # Validate task exists
     task_file = os.path.join(config.TASKS_DIR, f"{config.TASK_ID}.md")
     if not os.path.exists(task_file):
         print(f"❌ Task file not found: {task_file}")
@@ -444,7 +416,6 @@ def validate_configuration():
     else:
         print(f"✅ Task file found: {config.TASK_ID}.md")
     
-    # Additional validation for production mode
     if config.EXECUTION_MODE == "production":
         print("🚨 PRODUCTION MODE WARNINGS:")
         print("   - Real files will be created/modified")
@@ -461,19 +432,15 @@ async def main_with_args():
     """Main function with CLI argument support."""
     args = parse_arguments()
     
-    # Apply CLI overrides
     apply_cli_overrides(args)
     
-    # Validate configuration
     if not validate_configuration():
         sys.exit(1)
     
-    # If validate-only mode, exit after validation
     if args.validate_only:
         print("✅ Validation complete")
         return
     
-    # Initialize sandbox if in sandbox mode
     if config.EXECUTION_MODE == "sandbox":
         from .utils.sandbox_manager import initialize_sandbox, get_sandbox_manager
         sandbox_root = initialize_sandbox()
@@ -482,7 +449,6 @@ async def main_with_args():
         print(f"🏗️  Sandbox initialized: {sandbox_manager.session_id}")
         print(f"   📍 Location: {sandbox_root}")
         
-        # Register cleanup handler
         import atexit
         if config.AUTO_CLEANUP_SANDBOX:
             def cleanup_handler():
@@ -490,10 +456,8 @@ async def main_with_args():
                 sandbox_manager.cleanup()
             atexit.register(cleanup_handler)
     
-    # Run the main research process
     await main()
     
-    # Print summary for sandbox mode
     if config.EXECUTION_MODE == "sandbox":
         from .utils.sandbox_manager import get_sandbox_manager
         sandbox_manager = get_sandbox_manager()

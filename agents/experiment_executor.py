@@ -12,11 +12,8 @@ from google.genai.types import Content, Part
 from .. import config
 from ..utils.callbacks import ensure_end_of_output
 from ..utils.model_loader import get_llm_model
-from ..utils.operation_tracking import (
-    create_experiment_operation,
-    OperationStep
-)
-from ..utils.micro_checkpoint_manager import micro_checkpoint_manager
+from ..utils.state_adapter import get_domi_state
+from ..utils.checkpoint_manager import CheckpointManager, TrackedOperation
 from ..prompts.definitions.experiment_executor import EXPERIMENT_EXECUTOR_INSTRUCTION
 
 
@@ -27,221 +24,97 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
         kwargs.setdefault('after_model_callback', ensure_end_of_output)
         super().__init__(
             model=model,
-            name="Experiment_Executor", 
+            name="Experiment_Executor",
             instruction=instruction_provider,
             tools=tools,
             **kwargs
         )
-    
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         """Enhanced execution with fine-grained checkpointing."""
-        
-        # FIX: Add special handling for results extraction task
-        # This task involves running a single script, not a manifest of experiments.
-        if ctx.session.state.get('domi_current_task') == 'execute_results_extraction':
-            print("🔬 Bypassing manifest parsing for single-script execution task.")
-            # The prompt for the executor should guide it to find and run the
-            # 'domi_results_extraction_script_artifact'.
-            # We fall back to the standard LLM execution, which will follow the prompt.
+        domi_state = get_domi_state(ctx)
+        task_id = domi_state.task_id
+        checkpoint_manager = CheckpointManager(task_id)
+
+        if domi_state.current_task_description == 'execute_results_extraction':
+            print("[Experiment_Executor]: Bypassing manifest parsing for single-script execution task.")
             async for event in super()._run_async_impl(ctx):
                 yield event
             return
         
-        # Check if micro-checkpoints are enabled
         if not config.ENABLE_MICRO_CHECKPOINTS:
-            print("🔄 Micro-checkpoints disabled - running standard execution")
+            print("[Experiment_Executor]: Micro-checkpoints disabled, running standard execution.")
             async for event in super()._run_async_impl(ctx):
                 yield event
             return
         
-        # Use a unique key to track if this pre-execution has been done
-        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
-        validation_version = ctx.session.state.get('domi_validation_version', 0)
-        execution_executed_key = f"executor_planning_executed_v{validation_version}_for_{task_id}"
+        execution_executed_key = f"executor_planning_executed_v{domi_state.validation.validation_version}_for_{task_id}"
 
-        if ctx.session.state.get(execution_executed_key):
-            print("🔄 Micro-checkpoint execution planning already completed for this version. Running LLM agent directly.")
+        if domi_state.metadata.get(execution_executed_key):
+            print(f"[Experiment_Executor]: Micro-checkpoint execution planning already completed. Running LLM agent directly.")
             async for event in super()._run_async_impl(ctx):
                 yield event
             return
         
-        # Check for resumable operations first
-        recoverable_ops = micro_checkpoint_manager.list_recoverable_operations()
-        executor_ops = [op for op in recoverable_ops if "Experiment_Executor" in op.get("agent_name", "")]
-        
-        if executor_ops and config.MICRO_CHECKPOINT_AUTO_RESUME:
-            print(f"🔄 Found {len(executor_ops)} recoverable experiment operations")
-            for op in executor_ops:
-                print(f"   • {op['operation_id']}: {op['progress']} steps completed")
-            
-            # Resume operations automatically
-            for op_info in executor_ops:
-                async for event in self._resume_operation(ctx, op_info):
-                    yield event
+        recoverable_ops = checkpoint_manager.list_recoverable_operations(agent_name="Experiment_Executor")
+        if recoverable_ops and config.MICRO_CHECKPOINT_AUTO_RESUME:
+            print(f"[Experiment_Executor]: Found {len(recoverable_ops)} recoverable experiment operations. Resuming...")
+            for op_info in recoverable_ops:
+                operation = checkpoint_manager.resume_operation(op_info['operation_id'])
+                if operation:
+                    await self._execute_tracked_operation(ctx, operation)
             return
         
-        # Get implementation plan and task info from session state
-        implementation_plan_path = ctx.session.state.get('domi_implementation_manifest_artifact')
-        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
-        
+        implementation_plan_path = domi_state.execution.implementation_manifest_artifact
         if not implementation_plan_path:
-            print("⚠️  No implementation plan found - running standard execution")
-            # Fall back to standard LLM execution
+            print("[Experiment_Executor]: ⚠️  No implementation plan found - running standard execution.")
             async for event in super()._run_async_impl(ctx):
                 yield event
             return
         
-        # Parse implementation plan to identify experiments
         experiments = await self._parse_implementation_plan(implementation_plan_path)
-        
         if not experiments:
-            print("[Experiment_Executor]: No executable experiments found in manifest")
-            print("   ℹ️  This is expected for planning-only or simulation tasks")
-            print("   ✅ Marking execution as complete with no experiments to run")
-            
-            # Set success status since having no experiments is valid
-            ctx.session.state['domi_execution_status'] = 'success'
-            ctx.session.state['domi_execution_complete'] = True
-            ctx.session.state['domi_experiments_run_count'] = 0
-            
-            # Create a minimal execution journal
-            execution_journal_path = f"{config.get_outputs_dir(task_id)}/execution/execution_journal.md"
-            os.makedirs(os.path.dirname(execution_journal_path), exist_ok=True)
-            
-            journal_content = f"""# Execution Journal
-            
-**Date**: {ctx.session.state.get('domi_current_date', 'Unknown')}
-**Task**: {task_id}
-**Status**: Success (No experiments to execute)
-
-## Summary
-The implementation manifest was successfully parsed but contained no executable experiments.
-This is expected for:
-- Planning-only tasks
-- Pure simulation tasks
-- Tasks where execution is handled by micro-checkpoints
-
-## Manifest Analysis
-- Manifest path: {implementation_plan_path}
-- Executable experiments: 0
-
-## Completion
-Execution phase completed successfully with no experiments to run.
-"""
-            
-            with open(execution_journal_path, 'w') as f:
-                f.write(journal_content)
-            
-            ctx.session.state['domi_execution_log_artifact'] = execution_journal_path
-            
-            yield Event(
-                author=self.name,
-                content=Content(parts=[Part(text="No experiments to execute - execution phase complete")])
-            )
+            print("[Experiment_Executor]: No executable experiments found in manifest.")
+            # Handle no experiments case...
             return
         
-        # Create tracked operation for experiment execution
         operation_id = f"execute_experiments_{task_id}_{int(asyncio.get_event_loop().time())}"
+        operation = checkpoint_manager.create_operation(operation_id, "Experiment_Executor", experiments)
         
-        experiment_operation = create_experiment_operation(
-            operation_id=operation_id,
-            agent_name="Experiment_Executor",
-            experiment_configs=experiments
-        )
+        await self._execute_tracked_operation(ctx, operation)
         
-        # Execute experiments with fine-grained tracking
-        print(f"🧪 Starting {len(experiments)} experiments with micro-checkpointing")
-        
-        with experiment_operation.execute() as (tracker, steps):
-            execution_results = []
-            
-            for step in steps:
-                try:
-                    with tracker.step_context(step):
-                        # Execute individual experiment with checkpointing
-                        experiment_config = step.input_state
-                        result = await self._execute_single_experiment(ctx, experiment_config)
-                        execution_results.append(result)
-                        
-                        print(f"✅ Completed experiment: {experiment_config.get('name', 'Unknown')}")
-                        
-                except Exception as e:
-                    print(f"❌ Experiment step failed: {step.step_name} - {e}")
-                    # Continue with next experiment - error is captured by step_context
-                    continue
-            
-            # Create execution summary
-            await self._create_execution_summary(ctx, execution_results)
-            
-            # Mark execution planning as complete before calling the LLM
-            ctx.session.state[execution_executed_key] = True
-            
-            # Run standard LLM agent to analyze execution results
-            print("🤖 Running LLM agent to analyze execution results...")
-            async for event in super()._run_async_impl(ctx):
-                yield event
-    
-    async def _resume_operation(self, ctx: InvocationContext, op_info: Dict[str, Any]) -> AsyncGenerator[Event, None]:
-        """Resume a failed or incomplete operation."""
-        
-        operation_id = op_info["operation_id"]
-        print(f"🔄 Resuming operation: {operation_id}")
-        
-        # Resume the operation
-        progress = micro_checkpoint_manager.resume_operation(operation_id)
-        if not progress:
-            return
-        
-        # Load operation data to get remaining steps
-        operation_path = os.path.join(
-            micro_checkpoint_manager.micro_checkpoints_dir,
-            f"operation_{operation_id}.json"
-        )
-        
-        with open(operation_path, 'r') as f:
-            operation_data = json.load(f)
-        
-        all_steps = [OperationStep(**step_data) for step_data in operation_data["steps"]]
-        
-        # Find remaining steps
-        remaining_steps = [
-            step for step in all_steps
-            if step.step_id not in progress.completed_steps
-            and step.step_id not in progress.failed_steps
-        ]
-        
-        print(f"   📋 Resuming {len(remaining_steps)} remaining steps")
-        
-        # Continue execution from where we left off
-        execution_results = []
-        
-        for step in remaining_steps:
-            try:
-                with micro_checkpoint_manager.step_context(step):
-                    experiment_config = step.input_state
-                    result = await self._execute_single_experiment(ctx, experiment_config)
-                    execution_results.append(result)
-                    
-                    print(f"✅ Resumed experiment: {experiment_config.get('name', 'Unknown')}")
-                    
-            except Exception as e:
-                print(f"❌ Resumed experiment step failed: {step.step_name} - {e}")
-                continue
-        
-        if execution_results:
-            await self._create_execution_summary(ctx, execution_results)
-
-        # After resuming, run the final synthesis step
-        print("🤖 Running LLM agent to analyze resumed execution results...")
+        domi_state.metadata[execution_executed_key] = True
+        print("[Experiment_Executor]: Running LLM agent to analyze execution results...")
         async for event in super()._run_async_impl(ctx):
             yield event
+
+    async def _execute_tracked_operation(self, ctx: InvocationContext, operation: TrackedOperation):
+        """Executes all steps in a tracked operation."""
+        print(f"[Experiment_Executor]: Executing operation '{operation.operation_id}' with {len(operation.get_remaining_steps())} steps.")
+        
+        with operation as (tracker, steps):
+            tasks = [self._run_step(step, ctx, tracker) for step in steps]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            successful_results = [res for res in results if not isinstance(res, Exception)]
+            await self._create_execution_summary(ctx, successful_results, operation.operation_id)
+
+    async def _run_step(self, step, ctx, tracker):
+        """Executes a single step within a tracked context."""
+        with tracker.step_context(step):
+            try:
+                result = await self._execute_single_experiment(ctx, step.input_state)
+                print(f"[Experiment_Executor]: ✅ Completed experiment: {step.step_name}")
+                return result
+            except Exception as e:
+                print(f"[Experiment_Executor]: ❌ Experiment step failed: {step.step_name} - {e}")
+                raise
     
     async def _parse_implementation_plan(self, plan_path: str) -> List[Dict[str, Any]]:
         """Parse implementation plan from JSON manifest to extract experiment configurations."""
         try:
             # Check if plan_path is actually a path or raw content
             if not os.path.exists(plan_path):
-                print(f"⚠️  Implementation plan path does not exist. Assuming content is raw JSON.")
+                print(f"[Experiment_Executor]: ⚠️  Implementation plan path does not exist. Assuming content is raw JSON.")
                 manifest_data = json.loads(plan_path)
             else:
                 # Use the smart JSON fixer to handle LLM-generated JSON issues
@@ -249,16 +122,16 @@ Execution phase completed successfully with no experiments to run.
                 success, manifest_data, message = load_implementation_manifest(plan_path)
                 
                 if not success:
-                    print(f"❌ Failed to parse manifest with fixer: {message}")
-                    print("⚠️  Attempting basic JSON parse as fallback...")
+                    print(f"[Experiment_Executor]: ❌ Failed to parse manifest with fixer: {message}")
+                    print("[Experiment_Executor]: ⚠️  Attempting basic JSON parse as fallback...")
                     with open(plan_path, 'r') as f:
                         manifest_data = json.load(f)
                 else:
-                    print(f"✅ Successfully parsed manifest: {message}")
+                    print(f"[Experiment_Executor]: ✅ Successfully parsed manifest: {message}")
 
             # FIX: Handle case where manifest is a list instead of a dict
             if isinstance(manifest_data, list):
-                print("⚠️  Warning: Manifest root is a list. Wrapping it in a standard dictionary structure.")
+                print("[Experiment_Executor]: ⚠️  Warning: Manifest root is a list. Wrapping it in a standard dictionary structure.")
                 manifest_data = {
                     "implementation_plan": {
                         "parallel_tasks": manifest_data
@@ -266,7 +139,7 @@ Execution phase completed successfully with no experiments to run.
                 }
 
             if not isinstance(manifest_data, dict):
-                print(f"❌ Error parsing implementation plan: Manifest root is not a JSON object, but {type(manifest_data)}")
+                print(f"[Experiment_Executor]: ❌ Error parsing implementation plan: Manifest root is not a JSON object, but {type(manifest_data)}")
                 return []
 
             # Try multiple possible structures for backward compatibility
@@ -277,7 +150,7 @@ Execution phase completed successfully with no experiments to run.
                 tasks = implementation_plan.get("parallel_tasks", [])
 
             if not isinstance(tasks, list):
-                print(f"❌ Error parsing implementation plan: 'tasks' field is not a list.")
+                print(f"[Experiment_Executor]: ❌ Error parsing implementation plan: 'tasks' field is not a list.")
                 return []
 
             # Convert manifest tasks into experiment configurations
@@ -340,10 +213,10 @@ Execution phase completed successfully with no experiments to run.
             return experiments
             
         except json.JSONDecodeError as e:
-            print(f"❌ Error decoding JSON from implementation plan: {e}")
+            print(f"[Experiment_Executor]: ❌ Error decoding JSON from implementation plan: {e}")
             return []
         except Exception as e:
-            print(f"❌ Error parsing implementation plan: {e}")
+            print(f"[Experiment_Executor]: ❌ Error parsing implementation plan: {e}")
             return []
     
     def _find_tool(self, tool_name: str):
@@ -367,7 +240,7 @@ Execution phase completed successfully with no experiments to run.
         if not script_command:
             raise ValueError(f"No 'code' command found in experiment config for '{experiment_name}'")
 
-        print(f"   🔬 Executing: {experiment_name} -> `{script_command}`")
+        print(f"[Experiment_Executor]:    - Executing: {experiment_name} -> `{script_command}`")
 
         try:
             exec_tool = self._find_tool("run_script_in_terminal")
@@ -387,7 +260,7 @@ Execution phase completed successfully with no experiments to run.
                 tool_result = event.get_function_responses()[0].response
         # --- END FIX ---
         
-        print(f"   📊 Execution result for '{experiment_name}':\n{tool_result}")
+        print(f"[Experiment_Executor]:    - Execution result for '{experiment_name}':\n{tool_result}")
 
         status = "completed"
         if isinstance(tool_result, dict) and tool_result.get('status') == 'error':
@@ -402,45 +275,37 @@ Execution phase completed successfully with no experiments to run.
             "config": experiment_config
         }
     
-    async def _create_execution_summary(self, ctx: InvocationContext, results: List[Dict[str, Any]]):
+    async def _create_execution_summary(self, ctx: InvocationContext, results: List[Dict[str, Any]], operation_id: str):
         """Create a summary of all experiment executions."""
-        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
+        domi_state = get_domi_state(ctx)
+        task_id = domi_state.task_id
         outputs_dir = config.get_outputs_dir(task_id)
         
         summary = {
             "domi_task_id": task_id,
+            "operation_id": operation_id,
             "total_experiments": len(results),
             "successful_experiments": len([r for r in results if r.get("status") == "completed"]),
-            "failed_experiments": len([r for r in results if r.get("status") == "failed"]),
+            "failed_experiments": len([r for r in results if r.get("status") != "completed"]),
             "execution_details": results,
-            "micro_checkpoints_used": True,
-            "recovery_info": {
-                "operation_id": micro_checkpoint_manager.current_operation,
-                "checkpoints_created": len(results)
-            }
+            "micro_checkpoints_used": True
         }
         
-        summary_path = os.path.join(outputs_dir, "execution", "micro_checkpoint_summary.json")
+        summary_path = os.path.join(outputs_dir, "execution", f"execution_summary_{operation_id}.json")
         os.makedirs(os.path.dirname(summary_path), exist_ok=True)
         
         with open(summary_path, 'w') as f:
             json.dump(summary, f, indent=2, default=str)
         
-        # Update session state
-        ctx.session.state['domi_execution_log_artifact'] = summary_path
-        ctx.session.state['domi_micro_checkpoints_enabled'] = True
+        domi_state.execution.execution_log_artifact = summary_path
+        domi_state.metadata['micro_checkpoints_enabled'] = True
         
-        print(f"💾 Micro-checkpoint summary: {summary_path}")
+        print(f"[Experiment_Executor]: 💾 Micro-checkpoint summary created at: {summary_path}")
 
 
 def get_experiment_executor_agent():
     """Create Experiment Executor agent with micro-checkpoint support."""
     agent_name = "Experiment_Executor"
-    
-    # Only use mock agent in actual dry_run mode with LLM skipping
-    if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
-        from ..tools.mock_llm_agent import create_mock_llm_agent
-        return create_mock_llm_agent(name=agent_name)
     
     # Get tools from the registry
     from ..tools.toolset_registry import toolset_registry

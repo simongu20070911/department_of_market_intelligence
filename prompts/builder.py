@@ -5,6 +5,7 @@ The builder only orchestrates - all content lives in component files.
 
 from typing import Dict, List, Optional, Set
 from .. import config
+from ..utils.state_adapter import get_domi_state
 
 
 class PromptBuilder:
@@ -25,11 +26,6 @@ class PromptBuilder:
         """Add persona section."""
         return self.add_section(persona)
     
-    def add_communication_protocol(self) -> 'PromptBuilder':
-        """Add standard communication protocol."""
-        from .base import COMMUNICATION_PROTOCOL_WITH_PATH_VALIDATION
-        return self.add_section(COMMUNICATION_PROTOCOL_WITH_PATH_VALIDATION, ['agent_name', 'outputs_dir', 'current_task'])
-    
     def add_communication_protocol_with_path_validation(self) -> 'PromptBuilder':
         """Add enhanced communication protocol with path validation."""
         from .base import COMMUNICATION_PROTOCOL_WITH_PATH_VALIDATION, PATH_VALIDATION_RULES
@@ -45,11 +41,6 @@ class PromptBuilder:
         """Add time context section."""
         from .base import TIME_CONTEXT
         return self.add_section(TIME_CONTEXT, ['current_date', 'current_year'])
-    
-    def add_file_path_context(self) -> 'PromptBuilder':
-        """Add file path context section."""
-        from .base import FILE_PATH_CONTEXT
-        return self.add_section(FILE_PATH_CONTEXT, ['task_id', 'outputs_dir', 'task_file_path'])
     
     def add_directory_structure_spec(self) -> 'PromptBuilder':
         """Add comprehensive directory structure specification."""
@@ -90,41 +81,29 @@ def inject_template_variables(template: str, ctx, agent_name: str) -> str:
     from .. import config
     from datetime import datetime
     
-    # The ctx.state object behaves like a dictionary (e.g., supports .get()),
-    # so we can use it directly. No need for isinstance checks that fail on proxies.
-    session_state = ctx.state
+    domi_state = get_domi_state(ctx)
 
-    # Get basic variables from context and config, ensuring no None values
-    task_id = session_state.get("task_id") or config.TASK_ID
+    task_id = domi_state.task_id or config.TASK_ID
     outputs_dir = config.get_outputs_dir(task_id)
     
-    # For validators, show their actual validation task instead of the workflow task
-    # Validators shouldn't see "generate_initial_plan" when they're validating
     if "validator" in agent_name.lower():
-        validation_context = session_state.get("validation_context") or "research_plan"
+        validation_context = domi_state.validation.validation_context or "research_plan"
         current_task = f"validate_{validation_context}"
     else:
-        # Keep the exact task name for non-validator agents - they need the precise task identifier
-        # to trigger correct behavior branches in their prompts
-        current_task = session_state.get("current_task") or "TASK_NOT_SET_IN_STATE"
+        current_task = domi_state.current_task_description or "TASK_NOT_SET_IN_STATE"
     current_date = datetime.now().strftime("%Y-%m-%d")
     current_year = str(datetime.now().year)
-    validation_version = str(session_state.get("validation_version") or 0)
+    validation_version = str(domi_state.validation.validation_version or 0)
     
-    # Get plan version for Chief Researcher refinement tasks
-    plan_version = str(session_state.get("plan_version") or 0)
+    plan_version = str(domi_state.metadata.get("plan_version") or 0)
     next_version = str(int(plan_version) + 1)
     
-    # Get task file path
     task_file_path = f"{config.TASKS_DIR}/{task_id}.md"
     
-    # FIX: Explicitly get artifact_to_validate from session state
-    artifact_to_validate = session_state.get("artifact_to_validate") or "ARTIFACT_NOT_SET_IN_STATE"
+    artifact_to_validate = domi_state.validation.artifact_to_validate or "ARTIFACT_NOT_SET_IN_STATE"
     
-    # Get validation context for validators
-    validation_context = session_state.get("validation_context") or "research_plan"
+    validation_context = domi_state.validation.validation_context or "research_plan"
     
-    # Replace all template variables
     result = template
     replacements = {
         "{agent_name}": agent_name,
@@ -135,16 +114,14 @@ def inject_template_variables(template: str, ctx, agent_name: str) -> str:
         "{task_id}": task_id,
         "{validation_version}": validation_version,
         "{plan_version}": plan_version,
-        "{plan_version?}": plan_version,  # Handle optional syntax
+        "{plan_version?}": plan_version,
         "{next_version}": next_version,
         "{task_file_path}": task_file_path,
-        # FIX: Add the artifact path to the replacement dictionary
         "{artifact_to_validate}": artifact_to_validate,
         "{validation_context}": validation_context,
     }
     
     for placeholder, value in replacements.items():
-        # Ensure all values are strings before replacement to avoid TypeError
         result = result.replace(placeholder, str(value) if value is not None else "")
     
     return result
@@ -155,41 +132,28 @@ def inject_preloaded_context_variables(template: str, ctx, agent_name: str) -> s
     Enhanced template injection that includes pre-loaded context files.
     This eliminates the need for agents to manually discover and read files.
     """
-    # First apply basic template variables
     result = inject_template_variables(template, ctx, agent_name)
     
-    # Get session state safely, handling the StateProxy object
-    session_state_proxy = ctx.state
-    if hasattr(session_state_proxy, 'keys'):
-        # Convert proxy to a real dict for functions that expect a dict
-        session_state = {k: session_state_proxy.get(k) for k in session_state_proxy.keys()}
-    else:
-        session_state = {}
+    domi_state = get_domi_state(ctx)
     
-    # Check if context pre-loading is enabled
     if not config.ENABLE_CONTEXT_PRELOADING:
         return result
     
-    # Get pre-loaded context from session state
-    preloaded_context = session_state.get('preloaded_context', {})
+    preloaded_context = domi_state.metadata.get('preloaded_context', {})
     
     if not preloaded_context:
-        # Try to load context for this agent if not already loaded
         from ..utils.agent_context_preloader import preload_context_for_agent
         
         try:
-            preloaded_context = preload_context_for_agent(agent_name, session_state)
-            # Store in session state for future use
-            session_state['preloaded_context'] = preloaded_context
+            preloaded_context = preload_context_for_agent(agent_name, domi_state.dict())
+            domi_state.metadata['preloaded_context'] = preloaded_context
         except Exception as e:
             print(f"⚠️  Failed to pre-load context for {agent_name}: {e}")
             return result
     
-    # Inject each pre-loaded content as template variables
     for template_var, content in preloaded_context.items():
         placeholder = f"{{{template_var}}}"
         if placeholder in result and content:
-            # Add section headers for better readability
             formatted_content = f"```\n{content}\n```" if content else "(No content available)"
             result = result.replace(placeholder, formatted_content)
     

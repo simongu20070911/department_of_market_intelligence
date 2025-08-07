@@ -11,6 +11,7 @@ from google.adk.events import Event, EventActions
 from .. import config
 from ..utils.model_loader import get_llm_model
 from ..utils.callbacks import ensure_end_of_output
+from ..utils.state_adapter import get_domi_state
 from google.adk.agents.llm_agent import InstructionProvider, ReadonlyContext
 from ..prompts.definitions.validators import (
     JUNIOR_VALIDATOR_INSTRUCTIONS,
@@ -22,58 +23,24 @@ from ..prompts.components.contexts import (
     SENIOR_VALIDATION_PROMPTS
 )
 
-
-# Cache for validator agents to maintain state within a single refinement loop.
-_validator_agent_cache: Dict[str, BaseAgent] = {}
-
-def clear_validator_cache():
-    """Clear the validator agent cache to ensure fresh instances for new refinement loops."""
-    global _validator_agent_cache
-    if _validator_agent_cache:
-        print("🔄 Clearing validator agent cache for new refinement cycle.")
-        _validator_agent_cache.clear()
-
-
-# Note: VALIDATION_CONTEXTS is imported from prompts/definitions/validators.py
-
-
-def get_validation_context_prompt(context_type: str, role: str) -> str:
-    """Get context-specific prompts for validators based on what they're validating."""
-    if role == "junior":
-        return JUNIOR_VALIDATION_PROMPTS.get(context_type, "")
-    elif role == "senior":
-        return SENIOR_VALIDATION_PROMPTS.get(context_type, "")
-    return ""
-
-
 def get_junior_validator_agent():
     """Create a context-aware junior validator."""
-    # FIX: Removed caching to allow for parallel execution.
-    # Each validation loop needs its own unique agent instances.
     agent_name = "Junior_Validator"
     
-    # Only use mock agent in actual dry_run mode with LLM skipping
-    if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
-        from ..tools.mock_llm_agent import create_mock_llm_agent
-        return create_mock_llm_agent(name=agent_name)
-    
-    # Use the centralized toolset registry
     from ..tools.toolset_registry import toolset_registry
     desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
     
-    # Add JSON validator tool for validators
     from ..tools.json_validator import json_validator_tool
     
-    # Wrap in list if it's a real MCP toolset, mock tools are already a list
     if toolset_registry.is_using_real_mcp():
         tools = [desktop_commander_toolset, json_validator_tool]
     else:
-        # Mock tools are already a list, add json validator
         tools = desktop_commander_toolset + [json_validator_tool]
         
     def instruction_provider(ctx: ReadonlyContext) -> str:
         from ..prompts.builder import inject_template_variables_with_context_preloading
-        context_type = ctx.state.get("domi_validation_context", "research_plan")
+        domi_state = get_domi_state(ctx)
+        context_type = domi_state.validation.validation_context
         base_instruction = JUNIOR_VALIDATOR_INSTRUCTIONS.get(context_type, JUNIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
         return inject_template_variables_with_context_preloading(base_instruction, ctx, "Junior_Validator")
 
@@ -89,31 +56,22 @@ def get_junior_validator_agent():
 
 def get_senior_validator_agent():
     """Create a context-aware senior validator."""
-    # FIX: Removed caching to allow for parallel execution.
     agent_name = "Senior_Validator"
 
-    # Only use mock agent in actual dry_run mode with LLM skipping
-    if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
-        from ..tools.mock_llm_agent import create_mock_llm_agent
-        return create_mock_llm_agent(name=agent_name)
-    
-    # Use the centralized toolset registry
     from ..tools.toolset_registry import toolset_registry
     desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
     
-    # Add JSON validator tool for validators
     from ..tools.json_validator import json_validator_tool
     
-    # Wrap in list if it's a real MCP toolset, mock tools are already a list
     if toolset_registry.is_using_real_mcp():
         tools = [desktop_commander_toolset, json_validator_tool]
     else:
-        # Mock tools are already a list, add json validator
         tools = desktop_commander_toolset + [json_validator_tool]
         
     def instruction_provider(ctx: ReadonlyContext) -> str:
         from ..prompts.builder import inject_template_variables_with_context_preloading
-        context_type = ctx.state.get("domi_validation_context", "research_plan")
+        domi_state = get_domi_state(ctx)
+        context_type = domi_state.validation.validation_context
         base_instruction = SENIOR_VALIDATOR_INSTRUCTIONS.get(context_type, SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
         return inject_template_variables_with_context_preloading(base_instruction, ctx, "Senior_Validator")
 
@@ -129,11 +87,6 @@ def get_senior_validator_agent():
 
 def create_specialized_parallel_validator(validator_type: str, index: int, validation_context: str) -> BaseAgent:
     """Create a specialized validator for parallel validation based on context."""
-    
-    # Only use mock agent in actual dry_run mode with LLM skipping
-    if config.EXECUTION_MODE == "dry_run" and config.DRY_RUN_SKIP_LLM:
-        from ..tools.mock_llm_agent import create_mock_llm_agent
-        return create_mock_llm_agent(name=f"{validator_type}_{index}")
     
     # Use the centralized toolset registry
     from ..tools.toolset_registry import toolset_registry
@@ -177,7 +130,7 @@ def create_specialized_parallel_validator(validator_type: str, index: int, valid
                 "focus": JUNIOR_VALIDATION_PROMPTS.get("implementation_manifest", comprehensive_validation),
             },
             "validator_1": {
-                "name": "ParallelValidator_1", 
+                "name": "ParallelValidator_1",
                 "focus": JUNIOR_VALIDATION_PROMPTS.get("implementation_manifest", comprehensive_validation),
             },
             "validator_2": {
@@ -197,61 +150,16 @@ def create_specialized_parallel_validator(validator_type: str, index: int, valid
     validator_config = validator_configs.get(config_key, validator_configs["research_plan"])
     validator_info = list(validator_config.values())[index % len(validator_config)]
     
-    instruction_template = f"""
-        ### Persona ###
-        You are {validator_info['name']}, a meticulous validator for ULTRATHINK_QUANTITATIVEMarketAlpha.
-        You perform COMPREHENSIVE validation checking EVERYTHING systematically.
-        Today's date is: {{current_date}}
-
-        ### Context & State ###
-        Artifact to validate: {{domi_artifact_to_validate}}
-        Validation context: {{domi_validation_context}}
-        Validation version: {{domi_validation_version}}
-
-        ### CRITICAL FILE HANDLING PROTOCOL ###
-        1. **PRIMARY ATTEMPT**: Try to read the exact artifact path provided
-        2. **FALLBACK STRATEGY** (if file not found):
-           a. List the parent directory to see what files exist
-           b. Look for the latest version by checking for files with lower version numbers
-           c. For example, if `research_plan_v2.md` doesn't exist, look for `research_plan_v1.md`
-           d. Document in your report which file you actually validated
-        3. **WORKFLOW ERROR SIGNALING**: If NO artifact can be found after fallback:
-           a. Output: 🚨 CRITICAL_WORKFLOW_ERROR: No research plan found at {{artifact_to_validate}} or any fallback version - cannot perform validation
-           b. This will stop the pipeline immediately
-           c. Still attempt to write a validation report if possible
-        
-        **Example of proper error signaling:**
-        If you cannot find ANY version of the artifact after checking:
-        🚨 CRITICAL_WORKFLOW_ERROR: Research plan not found at /outputs/planning/research_plan_v2.md or v1.md - cannot validate non-existent artifact
-
-        ### Comprehensive Validation Instructions ###
-        {validator_info['focus']}
-
-        ### Task ###
-        1. Attempt to read the artifact using `read_file`
-        2. If file not found, execute fallback strategy (list directory, find latest version)
-        3. Perform COMPREHENSIVE, STEP-BY-STEP verification on the artifact you find
-        4. Check EVERYTHING - assume nothing is correct until verified
-        5. Classify issues as: CRITICAL ERROR, MAJOR GAP, or MINOR ISSUE
-        6. Write findings to `{{outputs_dir}}/parallel_validation_{index}_v{{validation_version}}.md`
-
-        ### Output Format ###
-        Structure your report with:
-        1. **FILE STATUS** - Which file was validated (expected vs actual)
-        2. **SUMMARY** - Overall assessment
-        3. **CRITICAL ERRORS** - Issues that break the approach
-        4. **MAJOR GAPS** - Significant omissions
-        5. **MINOR ISSUES** - Improvements for rigor
-        6. **DETAILED VERIFICATION LOG** - Step-by-step checks
-        
-        After writing the file, end your response with "<end of output>"
-        DO NOT put "<end of output>" inside the file content
-        """
+    from ..prompts.definitions.parallel_validator import PARALLEL_VALIDATOR_INSTRUCTION
+    instruction_template = PARALLEL_VALIDATOR_INSTRUCTION.format(focus=validator_info['focus'])
 
     def instruction_provider(ctx: ReadonlyContext) -> str:
         from ..prompts.builder import inject_template_variables_with_context_preloading
-        agent_name = f"{validator_info['name']}_{index}"
-        return inject_template_variables_with_context_preloading(instruction_template, ctx, agent_name)
+        # The agent name for the template is the generic one, not the indexed one
+        agent_name = validator_info['name']
+        # We inject the index separately for the output file path
+        template = instruction_template.replace("{index}", str(index))
+        return inject_template_variables_with_context_preloading(template, ctx, agent_name)
 
     return LlmAgent(
         model=get_llm_model(config.VALIDATOR_MODEL),
@@ -271,14 +179,22 @@ class ParallelFinalValidationAgent(BaseAgent):
         self._parallel_validators = None
     
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
-        # Get validation context from state
-        validation_context = ctx.session.state.get('domi_validation_context', 'research_plan')
+        domi_state = get_domi_state(ctx)
+        validation_context = domi_state.validation.validation_context
         
-        # Always create new validators to avoid state leakage between loops
         validators = []
         
-        # Create specialized validators based on context
-        for i in range(config.PARALLEL_VALIDATION_SAMPLES):
+        parallel_phase_map = {
+            "research_plan": WorkflowPhase.RESEARCH_PARALLEL_VALIDATION,
+            "implementation_manifest": WorkflowPhase.ORCHESTRATION_VALIDATION,
+            "code_implementation": WorkflowPhase.CODING_VALIDATION,
+            "experiment_execution": WorkflowPhase.EXPERIMENT_VALIDATION,
+            "results_extraction": WorkflowPhase.RESULTS_VALIDATION
+        }
+        
+        parallel_phase = parallel_phase_map.get(validation_context, WorkflowPhase.RESEARCH_PARALLEL_VALIDATION)
+        _, parallel_samples = enhanced_phase_manager.get_parallel_config(parallel_phase)
+        for i in range(parallel_samples):
             validator = create_specialized_parallel_validator(
                 validator_type=self._get_validator_type(validation_context, i),
                 index=i,
@@ -291,22 +207,20 @@ class ParallelFinalValidationAgent(BaseAgent):
             sub_agents=validators
         )
         
-        print(f"PARALLEL VALIDATION: Running {config.PARALLEL_VALIDATION_SAMPLES} specialized validators for {validation_context}")
+        print(f"[ParallelFinalValidationAgent]: Running {parallel_samples} specialized validators for {validation_context}.")
         
-        # Execute validators in parallel
         async for event in self._parallel_validators.run_async(ctx):
             yield event
         
-        # Analyze results
         critical_issues = self._analyze_validation_results(ctx)
         
         if critical_issues:
-            print(f"PARALLEL VALIDATION: {len(critical_issues)} critical issues found")
-            ctx.session.state['domi_validation_status'] = 'critical_error'
-            ctx.session.state['domi_consolidated_validation_issues'] = critical_issues
+            print(f"[ParallelFinalValidationAgent]: {len(critical_issues)} critical issues found.")
+            domi_state.validation.validation_status = 'critical_error'
+            domi_state.validation.consolidated_validation_issues = critical_issues
         else:
-            print("PARALLEL VALIDATION: All validators passed")
-            ctx.session.state['domi_validation_status'] = 'approved'
+            print("[ParallelFinalValidationAgent]: All validators passed.")
+            domi_state.validation.validation_status = 'approved'
         
         yield Event(
             author=self.name,
@@ -332,18 +246,28 @@ class ParallelFinalValidationAgent(BaseAgent):
         import re
         from .. import config
         
-        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
+        domi_state = get_domi_state(ctx)
+        task_id = domi_state.task_id
         outputs_dir = config.get_outputs_dir(task_id)
-        validation_version = ctx.session.state.get('domi_validation_version', 0)
+        validation_version = domi_state.validation.validation_version
         
         critical_issues = []
         validators_with_issues = []
-        validation_context = ctx.session.state.get('domi_validation_context', 'research_plan')
+        validation_context = domi_state.validation.validation_context
         
-        # Get the list of validator types that were actually run for this context
-        validator_types_to_check = [self._get_validator_type(validation_context, i) for i in range(config.PARALLEL_VALIDATION_SAMPLES)]
+        parallel_phase_map = {
+            "research_plan": WorkflowPhase.RESEARCH_PARALLEL_VALIDATION,
+            "implementation_manifest": WorkflowPhase.ORCHESTRATION_VALIDATION,
+            "code_implementation": WorkflowPhase.CODING_VALIDATION,
+            "experiment_execution": WorkflowPhase.EXPERIMENT_VALIDATION,
+            "results_extraction": WorkflowPhase.RESULTS_VALIDATION
+        }
         
-        for validator_type in set(validator_types_to_check): # Use set to avoid duplicates
+        parallel_phase = parallel_phase_map.get(validation_context, WorkflowPhase.RESEARCH_PARALLEL_VALIDATION)
+        _, parallel_samples = enhanced_phase_manager.get_parallel_config(parallel_phase)
+        validator_types_to_check = [self._get_validator_type(validation_context, i) for i in range(parallel_samples)]
+        
+        for validator_type in set(validator_types_to_check):
             output_file = os.path.join(outputs_dir, f"parallel_validation_{validator_type}_v{validation_version}.md")
             
             if os.path.exists(output_file):
@@ -351,204 +275,39 @@ class ParallelFinalValidationAgent(BaseAgent):
                     with open(output_file, 'r') as f:
                         content = f.read()
                     
-                    # Check if critical issues were found
                     if "No critical" not in content and len(content.strip()) > 50:
-                        # This validator found issues
                         validators_with_issues.append(validator_type)
                         
-                        # Extract specific issues (looking for bullet points or numbered items)
                         issue_patterns = [
-                            r'[-•*]\s*(.+)',  # Bullet points
-                            r'\d+\.\s*(.+)',  # Numbered lists
-                            r'Issue:\s*(.+)',  # Explicit issue markers
-                            r'Problem:\s*(.+)',  # Problem markers
+                            r'[-•*]\s*(.+)',
+                            r'\d+\.\s*(.+)',
+                            r'Issue:\s*(.+)',
+                            r'Problem:\s*(.+)',
                         ]
                         
                         found_in_file = []
                         for pattern in issue_patterns:
                             matches = re.findall(pattern, content, re.MULTILINE)
                             for match in matches:
-                                if len(match.strip()) > 10:  # Filter out very short matches
+                                if len(match.strip()) > 10:
                                     found_in_file.append(f"[{validator_type}] {match.strip()}")
                         
                         if not found_in_file:
-                            # If no specific patterns match, add the whole content as an issue
                             critical_issues.append(f"[{validator_type}] General feedback: {content.strip()}")
                         else:
                             critical_issues.extend(found_in_file)
                 
                 except Exception as e:
-                    print(f"Error reading {output_file}: {e}")
+                    print(f"[ParallelFinalValidationAgent]: Error reading {output_file}: {e}")
         
-        # Update session state based on findings
         if critical_issues:
-            ctx.session.state['domi_validation_status'] = 'critical_error'
-            print(f"PARALLEL VALIDATION: Found critical issues from validators: {', '.join(set(validators_with_issues))}")
+            domi_state.validation.validation_status = 'critical_error'
+            print(f"[ParallelFinalValidationAgent]: Found critical issues from validators: {', '.join(set(validators_with_issues))}")
         else:
-            ctx.session.state['domi_validation_status'] = 'approved'
-            print("PARALLEL VALIDATION: No critical issues found by any validator")
+            domi_state.validation.validation_status = 'approved'
+            print("[ParallelFinalValidationAgent]: No critical issues found by any validator.")
         
         return critical_issues
-    
-    def _find_latest_senior_critique(self, ctx: InvocationContext) -> str:
-        """Find the latest senior critique file."""
-        import os
-        from .. import config
-        
-        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
-        outputs_dir = config.get_outputs_dir(task_id)
-        critiques_dir = os.path.join(outputs_dir, "planning", "critiques")
-        
-        if not os.path.exists(critiques_dir):
-            return None
-        
-        # Find all senior critique files
-        senior_critiques = []
-        for filename in os.listdir(critiques_dir):
-            if filename.startswith("senior_critique_v") and filename.endswith(".md"):
-                senior_critiques.append(filename)
-        
-        if not senior_critiques:
-            return None
-        
-        # Sort by version number to get latest
-        senior_critiques.sort(key=lambda x: int(x.split('_v')[1].split('.')[0]))
-        latest_critique = senior_critiques[-1]
-        
-        return os.path.join(critiques_dir, latest_critique)
-
-
-def _find_latest_critique(ctx: InvocationContext, validator_role: str) -> Optional[str]:
-    """Finds the latest critique file for a given validator role."""
-    import os
-    from .. import config
-    
-    task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
-    outputs_dir = config.get_outputs_dir(task_id)
-    # This is a simplification; a more robust solution would check the current validation context
-    critiques_dir = os.path.join(outputs_dir, "planning", "critiques")
-
-    if not os.path.isdir(critiques_dir):
-        return None
-
-    critique_files = []
-    for f in os.listdir(critiques_dir):
-        if f.startswith(f"{validator_role}_critique_v") and f.endswith(".md"):
-            critique_files.append(os.path.join(critiques_dir, f))
-
-    if not critique_files:
-        return None
-
-    # Find the one with the highest version number from the filename
-    def get_version(filepath):
-        filename = os.path.basename(filepath)
-        try:
-            # Extracts version number like '2' from 'senior_critique_v2.md'
-            return int(re.search(r'_v(\d+)\.md', filename).group(1))
-        except (AttributeError, IndexError, ValueError):
-            return -1
-
-    latest_critique = max(critique_files, key=get_version)
-    return latest_critique
-
-async def _parse_status_from_critique(critique_path: str) -> Optional[str]:
-    """Parses the validation status from a critique file."""
-    if not critique_path or not os.path.exists(critique_path):
-        return None
-    
-    try:
-        with open(critique_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        status_match = re.search(r'\*\*FINAL VALIDATION STATUS:\s*(approved|rejected|critical_error)\*\*', content, re.IGNORECASE)
-        
-        if status_match:
-            return status_match.group(1).lower()
-    except Exception as e:
-        print(f"Error parsing critique file {critique_path}: {e}")
-    return None
-
-
-# This is not an LLM agent. It's a simple control-flow agent.
-class MetaValidatorCheckAgent(BaseAgent):
-    """Checks the state for 'domi_validation_status' and escalates based on the status."""
-    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
-        status = ctx.session.state.get("domi_validation_status")
-
-        # If status is not set (i.e., not a dry run), parse it from the senior validator's output file.
-        if status is None or status == "pending":
-            latest_senior_critique = _find_latest_critique(ctx, "senior")
-            if latest_senior_critique:
-                print(f"META VALIDATOR: Reading status from {os.path.basename(latest_senior_critique)}")
-                parsed_status = await _parse_status_from_critique(latest_senior_critique)
-                if parsed_status:
-                    status = parsed_status
-                    ctx.session.state["domi_validation_status"] = status
-                    print(f"META VALIDATOR: Parsed status '{status}' from critique.")
-                else:
-                    print("META VALIDATOR: Could not parse status from critique, assuming 'rejected' to continue loop.")
-                    status = "rejected"
-                    ctx.session.state['domi_revision_reason'] = 'senior_validation_parse_error'
-            else:
-                # This can happen on the very first run before any critique is written.
-                print("META VALIDATOR: No senior critique file found, assuming 'rejected' to continue loop.")
-                status = "rejected"
-                ctx.session.state['domi_revision_reason'] = 'no_senior_critique_found'
-        
-        if status == "approved":
-            print(f"META VALIDATOR: Status '{status}' - proceeding to next phase")
-            should_escalate = True
-        elif status == "critical_error":
-            print(f"META VALIDATOR: Status '{status}' - escalating for replanning")
-            # Set execution_status to trigger replanning at root level
-            ctx.session.state['domi_execution_status'] = 'critical_error'
-            should_escalate = True
-        else:  # rejected
-            print(f"META VALIDATOR: Status '{status}' - continuing refinement loop")
-            should_escalate = False
-            # Set explicit revision status
-            ctx.session.state["domi_validation_status"] = "needs_revision_after_junior_senior_validation"
-            if 'domi_revision_reason' not in ctx.session.state:
-                ctx.session.state['domi_revision_reason'] = 'senior_validation_rejected'
-            
-            # Determine the current phase to set the appropriate task
-            current_phase = ctx.session.state.get("domi_current_phase", "planning")
-            
-            if current_phase == "planning":
-                # For planning phase, trigger refine_plan task (not generate_initial_plan)
-                # to ensure Chief Researcher creates a new version
-                ctx.session.state["domi_current_task"] = "refine_plan"
-                
-                # Increment the version for the refinement
-                new_version = ctx.session.state.get("domi_plan_version", 0) + 1
-                ctx.session.state["domi_plan_version"] = new_version
-                ctx.session.state["domi_validation_version"] = new_version
-                
-                # Update the artifact path for the new version
-                task_id = ctx.session.state.get('domi_task_id', 'sample_research_task')
-                outputs_dir = f"/home/gaen/agents_gaen/department_of_market_intelligence/outputs/{task_id}"
-                ctx.session.state["domi_artifact_to_validate"] = f"{outputs_dir}/planning/research_plan_v{new_version}.md"
-                
-                print(f"   Setting task to 'refine_plan' for version {new_version}")
-            else:
-                # For other phases, maintain original behavior
-                print(f"   Rejection in phase: {current_phase}")
-            
-            # ** THE FIX: Clear the cache to get fresh validator instances for the next loop **
-            clear_validator_cache()
-        
-        # 'escalate=True' is the signal for a LoopAgent to terminate.
-        yield Event(
-            author=self.name,
-            actions=EventActions(escalate=should_escalate)
-        )
-        # This is required for async generators, even if there's no real async work.
-        await asyncio.sleep(0)
-
-
-def get_parallel_final_validation_agent():
-    """Get parallel final validation agent instance."""
-    return ParallelFinalValidationAgent(name="ParallelFinalValidation")
 
 
 # Export the context-aware validator functions
@@ -557,6 +316,5 @@ def get_context_aware_validators():
     return {
         'junior': get_junior_validator_agent,
         'senior': get_senior_validator_agent,
-        'parallel': ParallelFinalValidationAgent,
-        'meta_check': MetaValidatorCheckAgent
+        'parallel': ParallelFinalValidationAgent
     }
