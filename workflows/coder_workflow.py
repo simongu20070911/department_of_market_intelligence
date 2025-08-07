@@ -8,7 +8,7 @@ from google.adk.agents import BaseAgent, SequentialAgent, ParallelAgent, LoopAge
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
 from ..agents.coder import get_coder_agent
-from ..agents.validators import get_junior_validator_agent, get_senior_validator_agent, MetaValidatorCheckAgent, get_parallel_final_validation_agent
+from ..agents.validators import get_junior_validator_agent, get_senior_validator_agent, ParallelFinalValidationAgent
 from .. import config
 from ..utils.model_loader import get_llm_model
 from ..utils.state_adapter import get_domi_state
@@ -103,7 +103,7 @@ class CoderWorkflowAgent(BaseAgent):
             
             async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
                 domi_state = get_domi_state(ctx)
-                original_subtask = domi_state.execution..current_subtask
+                original_subtask = domi_state.execution.current_subtask
                 original_artifact = domi_state.validation.artifact_to_validate
                 original_version = domi_state.validation.validation_version
                 original_context = domi_state.validation.validation_context
@@ -146,10 +146,6 @@ class CoderWorkflowAgent(BaseAgent):
                 author=self.name,
                 content=Content(parts=[Part(text="[DRY_RUN] Parallel coding tasks completed")])
             )
-            domi_state.metadata['mock_coding_tasks'] = [
-                {'task_id': 'mock_task_1', 'description': 'Mock coding task 1', 'status': 'completed'},
-                {'task_id': 'mock_task_2', 'description': 'Mock coding task 2', 'status': 'completed'}
-            ]
             return
         
         try:

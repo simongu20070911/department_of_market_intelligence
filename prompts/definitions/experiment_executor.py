@@ -2,13 +2,13 @@
 from ..builder import PromptBuilder
 from ..components.personas import EXPERIMENT_EXECUTOR_PERSONA
 from ..components.contexts import EXPERIMENT_EXECUTOR_CONTEXT
-from ..components.tasks import EXECUTE_EXPERIMENTS_TASK
+from ..components.experiment_tasks import EXECUTE_EXPERIMENTS_TASK
 
 EXPERIMENT_EXECUTOR_INSTRUCTION = (
     PromptBuilder()
     .add_section("### Persona ###")
     .add_section(EXPERIMENT_EXECUTOR_PERSONA)
-    .add_communication_protocol_with_path_validation()
+    .add_communication_protocol()
     .add_directory_structure_spec()
     .add_section("### Context & State ###")
     .add_section(EXPERIMENT_EXECUTOR_CONTEXT)

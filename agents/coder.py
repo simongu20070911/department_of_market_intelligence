@@ -21,19 +21,22 @@ class CoderAgent(LlmAgent):
 
 def get_coder_agent():
     """Create Coder agent with execution-mode-aware tools."""
-    # Create tools based on execution mode
-    from ..utils.tool_factory import create_agent_tools
-    tools = create_agent_tools("Coder_Agent")
+    from ..tools.toolset_registry import toolset_registry
+    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
+    tools = [desktop_commander_toolset]
     
     # Create instruction provider for dynamic template variable injection with context pre-loading
     def instruction_provider(ctx: "ReadonlyContext") -> str:
         from ..prompts.builder import inject_template_variables_with_context_preloading
         return inject_template_variables_with_context_preloading(CODER_INSTRUCTION, ctx, "Coder_Agent")
         
-    return CoderAgent(
-        model=get_llm_model(config.CODER_MODEL),
+    agent = CoderAgent(
+        model=get_llm_model(config.AGENT_MODELS["CODER"]),
         name="Coder_Agent",
         instruction=instruction_provider,
         tools=tools,
         after_model_callback=ensure_end_of_output
     )
+
+    from ..utils.micro_checkpoint_wrapper import MicroCheckpointWrapper
+    return MicroCheckpointWrapper(agent_factory=lambda: agent, name="Coder_Agent_Micro_Checkpoint")

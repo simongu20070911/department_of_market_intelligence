@@ -4,7 +4,7 @@ Utilities for creating validation workflows.
 """
 from google.adk.agents import BaseAgent, LoopAgent, SequentialAgent
 from google.adk.agents.invocation_context import InvocationContext
-from ..agents.validators import get_junior_validator_agent, get_senior_validator_agent, MetaValidatorCheckAgent
+from ..agents.validators import get_junior_validator_agent, get_senior_validator_agent, get_meta_validator_check_agent
 from ..utils.state_adapter import get_domi_state
 
 def create_validation_loop(agent_to_validate: BaseAgent, loop_name: str) -> LoopAgent:
@@ -17,7 +17,7 @@ def create_validation_loop(agent_to_validate: BaseAgent, loop_name: str) -> Loop
             agent_to_validate,
             get_junior_validator_agent(),
             get_senior_validator_agent(),
-            MetaValidatorCheckAgent()
+            get_meta_validator_check_agent()
         ]
     )
 

@@ -13,9 +13,12 @@ from .checkpoint_manager import (
     OperationProgress
 )
 from .. import config
+from .logger import get_logger
+
+logger = get_logger(__name__)
 
 
-def recoverable_operation(operation_id: str = None, 
+def recoverable_operation(operation_id: str = None,
                          expected_outputs: List[str] = None,
                          timeout_seconds: int = None,
                          max_retries: int = 3):
@@ -109,9 +112,9 @@ def tracked_operation(operation_id: str,
         # Operation completed or failed
         progress = checkpoint_manager.operation_registry.get(actual_operation_id)
         if progress:
-            print(f"🏁 Operation {operation_id} finished:")
-            print(f"   ✅ Completed: {len(progress.completed_steps)}/{progress.total_steps}")
-            print(f"   ❌ Failed: {len(progress.failed_steps)}")
+            logger.info(f"🏁 Operation {operation_id} finished:")
+            logger.info(f"   ✅ Completed: {len(progress.completed_steps)}/{progress.total_steps}")
+            logger.info(f"   ❌ Failed: {len(progress.failed_steps)}")
 
 
 class OperationBuilder:
@@ -242,9 +245,9 @@ def resume_failed_operations(task_id: str = None) -> List[str]:
         
         if progress:
             resumed_ops.append(operation_id)
-            print(f"🔄 Resumed operation: {operation_id}")
+            logger.info(f"🔄 Resumed operation: {operation_id}")
         else:
-            print(f"❌ Failed to resume operation: {operation_id}")
+            logger.error(f"❌ Failed to resume operation: {operation_id}")
     
     return resumed_ops
 
@@ -286,25 +289,25 @@ def print_recovery_status(task_id: str = None):
     """Print recovery status for human review."""
     report = get_operation_recovery_report(task_id)
     
-    print(f"\n🔍 OPERATION RECOVERY STATUS")
-    print(f"Task ID: {report['task_id']}")
-    print(f"Recoverable Operations: {report['total_recoverable_operations']}")
-    print("=" * 50)
+    logger.info(f"\n🔍 OPERATION RECOVERY STATUS")
+    logger.info(f"Task ID: {report['task_id']}")
+    logger.info(f"Recoverable Operations: {report['total_recoverable_operations']}")
+    logger.info("=" * 50)
     
     if not report["operations"]:
-        print("✅ No operations need recovery")
+        logger.info("✅ No operations need recovery")
         return
     
     for op in report["operations"]:
-        print(f"\n📋 Operation: {op['operation_id']}")
-        print(f"   Agent: {op['agent_name']}")
-        print(f"   Progress: {op['progress']}")
-        print(f"   Failed Steps: {op['failed_steps']}")
-        print(f"   Created: {op['created_at']}")
+        logger.info(f"\n📋 Operation: {op['operation_id']}")
+        logger.info(f"   Agent: {op['agent_name']}")
+        logger.info(f"   Progress: {op['progress']}")
+        logger.info(f"   Failed Steps: {op['failed_steps']}")
+        logger.info(f"   Created: {op['created_at']}")
         if op['current_step']:
-            print(f"   Current Step: {op['current_step']}")
+            logger.info(f"   Current Step: {op['current_step']}")
     
     if report["recovery_recommendations"]:
-        print(f"\n🛠️  RECOVERY RECOMMENDATIONS:")
+        logger.info(f"\n🛠️  RECOVERY RECOMMENDATIONS:")
         for rec in report["recovery_recommendations"]:
-            print(f"   • {rec['operation_id']}: {rec['issue']} → {rec['action']}")
+            logger.info(f"   • {rec['operation_id']}: {rec['issue']} → {rec['action']}")

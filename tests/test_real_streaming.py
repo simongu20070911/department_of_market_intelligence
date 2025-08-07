@@ -13,7 +13,7 @@ async def main():
     litellm.api_base = api_base
     litellm.api_key = config.CUSTOM_API_KEY
     
-    model = f"openai/{config.CHIEF_RESEARCHER_MODEL}"
+    model = f"openai/{config.AGENT_MODELS['CHIEF_RESEARCHER']}"
     # A more complex prompt to encourage a longer, multi-chunk response
     messages = [{"role": "user", "content": "Explain the concept of quantum entanglement in simple terms, as if you were explaining it to a high school student. Use an analogy to help illustrate the key ideas."}]
     

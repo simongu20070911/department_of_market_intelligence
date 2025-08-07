@@ -19,6 +19,7 @@ from ..components.tasks import (
     VALIDATOR_RESTRICTIONS,
     SENIOR_VALIDATOR_RESTRICTIONS
 )
+from ..components.parallel_validator import PARALLEL_VALIDATOR_INSTRUCTION
 
 
 def build_junior_validator_instruction(context_type: str = None, task_description: str = "") -> str:
@@ -27,7 +28,7 @@ def build_junior_validator_instruction(context_type: str = None, task_descriptio
         PromptBuilder()
         .add_section("### Persona ###")
         .add_section(JUNIOR_VALIDATOR_PERSONA)
-        .add_communication_protocol_with_path_validation()
+        .add_communication_protocol()
         .add_directory_structure_spec()
         .add_section("### Context & State ###")
         .add_section(JUNIOR_VALIDATOR_CONTEXT)
@@ -58,7 +59,7 @@ def build_senior_validator_instruction(context_type: str = None, task_descriptio
         PromptBuilder()
         .add_section("### Persona ###")
         .add_section(SENIOR_VALIDATOR_PERSONA)
-        .add_communication_protocol_with_path_validation()
+        .add_communication_protocol()
         .add_directory_structure_spec()
         .add_section("### Context & State ###")
         .add_section(SENIOR_VALIDATOR_CONTEXT)

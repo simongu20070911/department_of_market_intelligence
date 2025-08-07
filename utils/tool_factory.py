@@ -6,6 +6,9 @@ Centralized tool factory for creating execution-mode-aware tools.
 import os
 from typing import List, Any
 from .. import config
+from .logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def create_agent_tools(agent_name: str = "Unknown") -> List[Any]:
@@ -17,33 +20,13 @@ def create_agent_tools(agent_name: str = "Unknown") -> List[Any]:
     Returns:
         List of tools appropriate for the current execution mode
     """
-    if config.EXECUTION_MODE == "dry_run":
-        return _create_mock_tools(agent_name)
-    elif config.EXECUTION_MODE == "sandbox":
+    if config.EXECUTION_MODE == "sandbox":
         return _create_sandbox_tools(agent_name)
     elif config.EXECUTION_MODE == "production":
         return _create_production_tools(agent_name)
     else:
-        raise ValueError(f"Unknown execution mode: {config.EXECUTION_MODE}")
-
-
-def _create_mock_tools(agent_name: str) -> List[Any]:
-    """Create mock tools for dry run mode.
-    
-    Args:
-        agent_name: Name of the agent
-        
-    Returns:
-        List of mock tools
-    """
-    print(f"🎭 Creating mock tools for {agent_name} (dry_run mode)")
-    
-    if config.DRY_RUN_SKIP_LLM:
-        from ..tools.mock_llm_agent import create_mock_llm_agent
-        return []  # Mock LLM agents don't need tools
-    else:
-        from ..tools.mock_tools import mock_desktop_commander_toolset
-        return mock_desktop_commander_toolset
+        logger.warning(f"⚠️ Unknown execution mode '{config.EXECUTION_MODE}', defaulting to sandbox.")
+        return _create_sandbox_tools(agent_name)
 
 
 def _create_sandbox_tools(agent_name: str) -> List[Any]:
@@ -58,7 +41,7 @@ def _create_sandbox_tools(agent_name: str) -> List[Any]:
     Returns:
         List of MCP tools configured for project directory access
     """
-    print(f"🏗️  Creating sandbox tools for {agent_name}")
+    logger.info(f"🏗️  Creating sandbox tools for {agent_name}")
     
     try:
         from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
@@ -84,17 +67,17 @@ def _create_sandbox_tools(agent_name: str) -> List[Any]:
         )
         
         
-        print(f"✅ Sandbox MCP toolset created for {agent_name}")
-        print(f"   📁 Working directory: {config._BASE_DIR}")
-        print(f"   📊 Outputs directory: {config.get_outputs_dir()}")
-        print(f"   🔒 Safety: Execution monitoring enabled")
+        logger.info(f"✅ Sandbox MCP toolset created for {agent_name}")
+        logger.info(f"   📁 Working directory: {config._BASE_DIR}")
+        logger.info(f"   📊 Outputs directory: {config.get_outputs_dir()}")
+        logger.info(f"   🔒 Safety: Execution monitoring enabled")
         
         return [toolset]
         
     except Exception as e:
-        print(f"❌ Failed to create sandbox tools for {agent_name}: {e}")
-        print("🔄 Falling back to mock tools")
-        return _create_mock_tools(agent_name)
+        logger.error(f"❌ Failed to create sandbox tools for {agent_name}: {e}")
+        logger.error("❌ Cannot fall back to mock tools as they are removed.")
+        raise e
 
 
 def _create_production_tools(agent_name: str) -> List[Any]:
@@ -108,19 +91,19 @@ def _create_production_tools(agent_name: str) -> List[Any]:
     """
     # Safety check for production mode
     if config.REQUIRE_PRODUCTION_CONFIRMATION:
-        print(f"⚠️  PRODUCTION MODE: Creating real tools for {agent_name}")
-        print("   This will create actual files and make real changes!")
+        logger.warning(f"⚠️  PRODUCTION MODE: Creating real tools for {agent_name}")
+        logger.warning("   This will create actual files and make real changes!")
         
         if not os.getenv("DOMI_PRODUCTION_CONFIRMED"):
             response = input("🚨 Continue with production mode? (type 'CONFIRM'): ")
             if response != "CONFIRM":
-                print("❌ Production mode cancelled, using sandbox tools instead")
+                logger.error("❌ Production mode cancelled, using sandbox tools instead")
                 return _create_sandbox_tools(agent_name)
             
             # Set environment variable to avoid repeated prompts
             os.environ["DOMI_PRODUCTION_CONFIRMED"] = "true"
     
-    print(f"🚨 Creating PRODUCTION tools for {agent_name}")
+    logger.info(f"🚨 Creating PRODUCTION tools for {agent_name}")
     
     try:
         import concurrent.futures
@@ -154,12 +137,12 @@ def _create_production_tools(agent_name: str) -> List[Any]:
             future = executor.submit(create_mcp_toolset)
             toolset = future.result(timeout=config.MCP_TIMEOUT_SECONDS + 10)
             tools = [toolset]
-            print(f"✅ Production MCP toolset created for {agent_name}")
+            logger.info(f"✅ Production MCP toolset created for {agent_name}")
             return tools
             
     except Exception as e:
-        print(f"❌ Failed to create production tools for {agent_name}: {e}")
-        print("🔄 Falling back to sandbox tools for safety")
+        logger.error(f"❌ Failed to create production tools for {agent_name}: {e}")
+        logger.warning("🔄 Falling back to sandbox tools for safety")
         return _create_sandbox_tools(agent_name)
 
 
@@ -176,13 +159,7 @@ def get_execution_mode_info() -> dict:
         "file_operations": ""
     }
     
-    if config.EXECUTION_MODE == "dry_run":
-        info.update({
-            "description": "Mock tools only, no real operations",
-            "safety_level": "SAFE",
-            "file_operations": "Simulated only"
-        })
-    elif config.EXECUTION_MODE == "sandbox":
+    if config.EXECUTION_MODE == "sandbox":
         info.update({
             "description": "Real tools with project directory access",
             "safety_level": "SAFE", 
@@ -202,17 +179,17 @@ def print_execution_mode_warning():
     """Print a warning about the current execution mode."""
     info = get_execution_mode_info()
     
-    print(f"\n🔧 EXECUTION MODE: {info['mode'].upper()}")
-    print(f"   📋 {info['description']}")
-    print(f"   🛡️  Safety: {info['safety_level']}")
-    print(f"   📁 Files: {info['file_operations']}")
+    logger.info(f"\n🔧 EXECUTION MODE: {info['mode'].upper()}")
+    logger.info(f"   📋 {info['description']}")
+    logger.info(f"   🛡️  Safety: {info['safety_level']}")
+    logger.info(f"   📁 Files: {info['file_operations']}")
     
     if config.EXECUTION_MODE == "production":
-        print("   🚨 WARNING: This mode creates real files and makes actual changes!")
+        logger.warning("   🚨 WARNING: This mode creates real files and makes actual changes!")
     elif config.EXECUTION_MODE == "sandbox":
-        print(f"   📊 Outputs: {config.get_outputs_dir()}")
+        logger.info(f"   📊 Outputs: {config.get_outputs_dir()}")
     
-    print()
+    logger.info("")
 
 
 def validate_execution_mode() -> bool:
@@ -221,17 +198,17 @@ def validate_execution_mode() -> bool:
     Returns:
         True if configuration is valid
     """
-    valid_modes = ["dry_run", "sandbox", "production"]
+    valid_modes = ["sandbox", "production"]
     
     if config.EXECUTION_MODE not in valid_modes:
-        print(f"❌ Invalid execution mode: {config.EXECUTION_MODE}")
-        print(f"   Valid modes: {', '.join(valid_modes)}")
+        logger.error(f"❌ Invalid execution mode: {config.EXECUTION_MODE}")
+        logger.error(f"   Valid modes: {', '.join(valid_modes)}")
         return False
     
     if config.EXECUTION_MODE == "sandbox":
         from .sandbox_manager import validate_sandbox_safety
         if not validate_sandbox_safety():
-            print("❌ Sandbox configuration is not safe")
+            logger.error("❌ Sandbox configuration is not safe")
             return False
     
     return True
@@ -242,8 +219,8 @@ if __name__ == "__main__":
     import sys
     
     if len(sys.argv) < 2:
-        print("Tool Factory Test")
-        print("Usage: python -m utils.tool_factory <agent_name>")
+        logger.info("Tool Factory Test")
+        logger.info("Usage: python -m utils.tool_factory <agent_name>")
         sys.exit(1)
     
     agent_name = sys.argv[1]
@@ -251,11 +228,11 @@ if __name__ == "__main__":
     print_execution_mode_warning()
     
     if not validate_execution_mode():
-        print("❌ Invalid execution mode configuration")
+        logger.error("❌ Invalid execution mode configuration")
         sys.exit(1)
     
     tools = create_agent_tools(agent_name)
-    print(f"✅ Created {len(tools)} tools for {agent_name}")
+    logger.info(f"✅ Created {len(tools)} tools for {agent_name}")
     
     info = get_execution_mode_info()
-    print(f"🔧 Mode: {info['mode']} ({info['safety_level']})")
+    logger.info(f"🔧 Mode: {info['mode']} ({info['safety_level']})")

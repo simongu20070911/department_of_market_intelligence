@@ -22,67 +22,58 @@ from ..prompts.components.contexts import (
     JUNIOR_VALIDATION_PROMPTS,
     SENIOR_VALIDATION_PROMPTS
 )
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def _create_validator_agent(agent_name: str, instruction_map: Dict[str, str], default_instruction: str) -> LlmAgent:
+    """Generic factory for creating context-aware validator agents."""
+    from ..tools.toolset_registry import toolset_registry
+    from ..tools.json_validator import json_validator_tool
+
+    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
+    tools = [desktop_commander_toolset, json_validator_tool]
+
+    def instruction_provider(ctx: ReadonlyContext) -> str:
+        from ..prompts.builder import inject_template_variables_with_context_preloading
+        domi_state = get_domi_state(ctx)
+        context_type = domi_state.validation.validation_context
+        instruction = instruction_map.get(context_type, default_instruction)
+        return inject_template_variables_with_context_preloading(instruction, ctx, agent_name)
+
+    return LlmAgent(
+        model=get_llm_model(config.AGENT_MODELS["VALIDATOR"]),
+        name=agent_name,
+        instruction=instruction_provider,
+        tools=tools,
+        after_model_callback=ensure_end_of_output
+    )
 
 def get_junior_validator_agent():
     """Create a context-aware junior validator."""
-    agent_name = "Junior_Validator"
-    
-    from ..tools.toolset_registry import toolset_registry
-    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
-    
-    from ..tools.json_validator import json_validator_tool
-    
-    if toolset_registry.is_using_real_mcp():
-        tools = [desktop_commander_toolset, json_validator_tool]
-    else:
-        tools = desktop_commander_toolset + [json_validator_tool]
-        
-    def instruction_provider(ctx: ReadonlyContext) -> str:
-        from ..prompts.builder import inject_template_variables_with_context_preloading
-        domi_state = get_domi_state(ctx)
-        context_type = domi_state.validation.validation_context
-        base_instruction = JUNIOR_VALIDATOR_INSTRUCTIONS.get(context_type, JUNIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
-        return inject_template_variables_with_context_preloading(base_instruction, ctx, "Junior_Validator")
-
-    agent = LlmAgent(
-        model=get_llm_model(config.VALIDATOR_MODEL),
-        name=agent_name,
-        instruction=instruction_provider,
-        tools=tools,
-        after_model_callback=ensure_end_of_output
+    return _create_validator_agent(
+        "Junior_Validator",
+        JUNIOR_VALIDATOR_INSTRUCTIONS,
+        JUNIOR_VALIDATOR_INSTRUCTIONS["research_plan"]
     )
-    return agent
-
 
 def get_senior_validator_agent():
     """Create a context-aware senior validator."""
-    agent_name = "Senior_Validator"
-
-    from ..tools.toolset_registry import toolset_registry
-    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
-    
-    from ..tools.json_validator import json_validator_tool
-    
-    if toolset_registry.is_using_real_mcp():
-        tools = [desktop_commander_toolset, json_validator_tool]
-    else:
-        tools = desktop_commander_toolset + [json_validator_tool]
-        
-    def instruction_provider(ctx: ReadonlyContext) -> str:
-        from ..prompts.builder import inject_template_variables_with_context_preloading
-        domi_state = get_domi_state(ctx)
-        context_type = domi_state.validation.validation_context
-        base_instruction = SENIOR_VALIDATOR_INSTRUCTIONS.get(context_type, SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
-        return inject_template_variables_with_context_preloading(base_instruction, ctx, "Senior_Validator")
-
-    agent = LlmAgent(
-        model=get_llm_model(config.VALIDATOR_MODEL),
-        name=agent_name,
-        instruction=instruction_provider,
-        tools=tools,
-        after_model_callback=ensure_end_of_output
+    return _create_validator_agent(
+        "Senior_Validator",
+        SENIOR_VALIDATOR_INSTRUCTIONS,
+        SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"]
     )
-    return agent
+
+
+def get_meta_validator_check_agent():
+    """Create a meta validator check agent."""
+    return _create_validator_agent(
+        "Meta_Validator_Check",
+        SENIOR_VALIDATOR_INSTRUCTIONS,
+        SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"]
+    )
 
 
 def create_specialized_parallel_validator(validator_type: str, index: int, validation_context: str) -> BaseAgent:
@@ -92,62 +83,15 @@ def create_specialized_parallel_validator(validator_type: str, index: int, valid
     from ..tools.toolset_registry import toolset_registry
     desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
     
-    # Wrap in list if it's a real MCP toolset, mock tools are already a list
-    if toolset_registry.is_using_real_mcp():
-        tools = [desktop_commander_toolset]
-    else:
-        tools = desktop_commander_toolset
+    tools = [desktop_commander_toolset]
     
     # Import the centralized validation prompts that Junior and Senior use
-    from ..prompts.components.contexts import JUNIOR_VALIDATION_PROMPTS
-    
-    # All parallel validators use the same comprehensive validation approach
-    comprehensive_validation = JUNIOR_VALIDATION_PROMPTS.get("research_plan", "")
-    
-    validator_configs = {
-        "research_plan": {
-            "validator_0": {
-                "name": "ParallelValidator_0",
-                "focus": comprehensive_validation,
-            },
-            "validator_1": {
-                "name": "ParallelValidator_1",
-                "focus": comprehensive_validation,
-            },
-            "validator_2": {
-                "name": "ParallelValidator_2",
-                "focus": comprehensive_validation,
-            },
-            "validator_3": {
-                "name": "ParallelValidator_3",
-                "focus": comprehensive_validation,
-            }
-        },
-        # For implementation manifests, also use comprehensive validation
-        "implementation_manifest": {
-            "validator_0": {
-                "name": "ParallelValidator_0",
-                "focus": JUNIOR_VALIDATION_PROMPTS.get("implementation_manifest", comprehensive_validation),
-            },
-            "validator_1": {
-                "name": "ParallelValidator_1",
-                "focus": JUNIOR_VALIDATION_PROMPTS.get("implementation_manifest", comprehensive_validation),
-            },
-            "validator_2": {
-                "name": "ParallelValidator_2",
-                "focus": JUNIOR_VALIDATION_PROMPTS.get("implementation_manifest", comprehensive_validation),
-            },
-            "validator_3": {
-                "name": "ParallelValidator_3",
-                "focus": JUNIOR_VALIDATION_PROMPTS.get("implementation_manifest", comprehensive_validation),
-            }
-        }
-    }
+    from ..prompts.components.parallel_validator_configs import PARALLEL_VALIDATOR_CONFIGS
     
     # Use the provided validation_context to select the right configuration
     config_key = validation_context.split("_")[0] if validation_context else "research"
     
-    validator_config = validator_configs.get(config_key, validator_configs["research_plan"])
+    validator_config = PARALLEL_VALIDATOR_CONFIGS.get(config_key, PARALLEL_VALIDATOR_CONFIGS["research_plan"])
     validator_info = list(validator_config.values())[index % len(validator_config)]
     
     from ..prompts.definitions.parallel_validator import PARALLEL_VALIDATOR_INSTRUCTION
@@ -162,7 +106,7 @@ def create_specialized_parallel_validator(validator_type: str, index: int, valid
         return inject_template_variables_with_context_preloading(template, ctx, agent_name)
 
     return LlmAgent(
-        model=get_llm_model(config.VALIDATOR_MODEL),
+        model=get_llm_model(config.AGENT_MODELS["VALIDATOR"]),
         name=f"{validator_info['name']}_{index}",
         instruction=instruction_provider,
         tools=tools,
@@ -207,7 +151,7 @@ class ParallelFinalValidationAgent(BaseAgent):
             sub_agents=validators
         )
         
-        print(f"[ParallelFinalValidationAgent]: Running {parallel_samples} specialized validators for {validation_context}.")
+        logger.info(f"[ParallelFinalValidationAgent]: Running {parallel_samples} specialized validators for {validation_context}.")
         
         async for event in self._parallel_validators.run_async(ctx):
             yield event
@@ -215,11 +159,11 @@ class ParallelFinalValidationAgent(BaseAgent):
         critical_issues = self._analyze_validation_results(ctx)
         
         if critical_issues:
-            print(f"[ParallelFinalValidationAgent]: {len(critical_issues)} critical issues found.")
+            logger.warning(f"[ParallelFinalValidationAgent]: {len(critical_issues)} critical issues found.")
             domi_state.validation.validation_status = 'critical_error'
             domi_state.validation.consolidated_validation_issues = critical_issues
         else:
-            print("[ParallelFinalValidationAgent]: All validators passed.")
+            logger.info("[ParallelFinalValidationAgent]: All validators passed.")
             domi_state.validation.validation_status = 'approved'
         
         yield Event(
@@ -298,14 +242,14 @@ class ParallelFinalValidationAgent(BaseAgent):
                             critical_issues.extend(found_in_file)
                 
                 except Exception as e:
-                    print(f"[ParallelFinalValidationAgent]: Error reading {output_file}: {e}")
+                    logger.error(f"[ParallelFinalValidationAgent]: Error reading {output_file}: {e}")
         
         if critical_issues:
             domi_state.validation.validation_status = 'critical_error'
-            print(f"[ParallelFinalValidationAgent]: Found critical issues from validators: {', '.join(set(validators_with_issues))}")
+            logger.warning(f"[ParallelFinalValidationAgent]: Found critical issues from validators: {', '.join(set(validators_with_issues))}")
         else:
             domi_state.validation.validation_status = 'approved'
-            print("[ParallelFinalValidationAgent]: No critical issues found by any validator.")
+            logger.info("[ParallelFinalValidationAgent]: No critical issues found by any validator.")
         
         return critical_issues
 
@@ -316,5 +260,6 @@ def get_context_aware_validators():
     return {
         'junior': get_junior_validator_agent,
         'senior': get_senior_validator_agent,
-        'parallel': ParallelFinalValidationAgent
+        'parallel': ParallelFinalValidationAgent,
+        'meta_validator': get_meta_validator_check_agent
     }

@@ -20,6 +20,10 @@ from contextlib import contextmanager
 
 from .. import config
 from .state_model import DOMISessionState
+from .logger import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class OperationStep:
@@ -95,7 +99,7 @@ class CheckpointManager:
                        operation_state: Dict[str, Any] = None) -> Optional[str]:
         """Start tracking a multi-step operation."""
         if not config.ENABLE_MICRO_CHECKPOINTS:
-            print("⚠️  Micro-checkpoints disabled in config")
+            logger.warning("⚠️  Micro-checkpoints disabled in config")
             return None
         
         progress = OperationProgress(
@@ -120,7 +124,7 @@ class CheckpointManager:
         self.operation_registry[operation_id] = progress
         self.current_operation = operation_id
         
-        print(f"🔍 Started micro-tracked operation: {operation_id} for agent {agent_name} with {len(steps)} steps.")
+        logger.info(f"🔍 Started micro-tracked operation: {operation_id} for agent {agent_name} with {len(steps)} steps.")
         return operation_id
 
     @contextmanager
@@ -132,7 +136,7 @@ class CheckpointManager:
         operation_id = self.current_operation
         step.started_at = datetime.now(timezone.utc).isoformat()
         
-        print(f"🔄 Executing step: {step.step_name}")
+        logger.info(f"🔄 Executing step: {step.step_name}")
         
         try:
             self._create_step_checkpoint(operation_id, step, "pre_execution")
@@ -140,7 +144,7 @@ class CheckpointManager:
             step.completed_at = datetime.now(timezone.utc).isoformat()
             self._mark_step_completed(operation_id, step.step_id)
             self._create_step_checkpoint(operation_id, step, "completed")
-            print(f"✅ Step completed: {step.step_name}")
+            logger.info(f"✅ Step completed: {step.step_name}")
         except Exception as e:
             step.error_info = {
                 "error_type": type(e).__name__,
@@ -150,20 +154,20 @@ class CheckpointManager:
             }
             self._create_step_checkpoint(operation_id, step, "failed")
             self._mark_step_failed(operation_id, step.step_id, step.error_info)
-            print(f"❌ Step failed: {step.step_name} - {e}")
+            logger.error(f"❌ Step failed: {step.step_name} - {e}")
             if step.retry_count < step.max_retries:
                 step.retry_count += 1
-                print(f"🔄 Retrying step (attempt {step.retry_count + 1}/{step.max_retries + 1})")
+                logger.warning(f"🔄 Retrying step (attempt {step.retry_count + 1}/{step.max_retries + 1})")
                 raise
             else:
-                print(f"💀 Step failed permanently after {step.max_retries} retries")
+                logger.critical(f"💀 Step failed permanently after {step.max_retries} retries")
                 raise
 
     def resume_operation(self, operation_id: str) -> Optional[OperationProgress]:
         """Resume a partially completed operation."""
         operation_path = os.path.join(self.micro_checkpoints_dir, f"operation_{operation_id}.json")
         if not os.path.exists(operation_path):
-            print(f"❌ Operation not found: {operation_id}")
+            logger.error(f"❌ Operation not found: {operation_id}")
             return None
         
         try:
@@ -174,10 +178,10 @@ class CheckpointManager:
             self.operation_registry[operation_id] = progress
             self.current_operation = operation_id
             
-            print(f"🔄 RESUMING MICRO-OPERATION: {operation_id}")
+            logger.info(f"🔄 RESUMING MICRO-OPERATION: {operation_id}")
             return progress
         except Exception as e:
-            print(f"❌ Error resuming operation {operation_id}: {e}")
+            logger.error(f"❌ Error resuming operation {operation_id}: {e}")
             return None
 
     def list_recoverable_operations(self) -> List[Dict[str, Any]]:
@@ -201,41 +205,65 @@ class CheckpointManager:
                             "current_step": progress.get("current_step")
                         })
                 except Exception as e:
-                    print(f"⚠️  Error reading operation {filename}: {e}")
+                    logger.warning(f"⚠️  Error reading operation {filename}: {e}")
         
         return sorted(operations, key=lambda x: x["created_at"], reverse=True)
 
-    def save_state_snapshot(self, state: DOMISessionState, phase: str, status: str = "snapshot"):
+    def save_state_snapshot(self, state: DOMISessionState, phase: str):
         """Save a complete snapshot of the application state and outputs."""
-        timestamp = datetime.now(timezone.utc).isoformat().replace(":", "-")
-        snapshot_name = f"state_{phase}_{status}_{timestamp}"
+        timestamp = datetime.now(timezone.utc).isoformat().replace(":", "-").replace(".", "-")
+        snapshot_name = f"snapshot_{phase}_{timestamp}"
         snapshot_dir = os.path.join(self.checkpoints_dir, snapshot_name)
         os.makedirs(snapshot_dir, exist_ok=True)
-        
+
         state_path = os.path.join(snapshot_dir, "domi_state.json")
         with open(state_path, 'w') as f:
             json.dump(state.dict(), f, indent=2)
-            
+
         outputs_dir = config.get_outputs_dir(self.task_id)
         if os.path.exists(outputs_dir):
-            shutil.copytree(outputs_dir, os.path.join(snapshot_dir, "outputs_snapshot"))
-            
-        print(f"[CheckpointManager]: Saved state snapshot to {snapshot_dir}")
+            archive_path = os.path.join(snapshot_dir, "outputs_snapshot")
+            shutil.make_archive(archive_path, 'zip', outputs_dir)
+            logger.info(f"Saved and archived outputs to {archive_path}.zip")
+
+        logger.info(f"[CheckpointManager]: Saved state snapshot to {snapshot_dir}")
 
     def load_latest_snapshot(self) -> Optional[DOMISessionState]:
-        """Load the most recent state snapshot."""
-        snapshots = sorted(
-            [d for d in os.listdir(self.checkpoints_dir) if os.path.isdir(os.path.join(self.checkpoints_dir, d)) and d.startswith('state_')],
-            reverse=True
-        )
+        """Load the most recent state snapshot and restore outputs."""
+        snapshots = self.get_sorted_snapshots()
         if not snapshots:
             return None
-            
-        state_path = os.path.join(self.checkpoints_dir, snapshots[0], "domi_state.json")
+
+        latest_snapshot_dir = os.path.join(self.checkpoints_dir, snapshots[0])
+        state_path = os.path.join(latest_snapshot_dir, "domi_state.json")
+        archive_path = os.path.join(latest_snapshot_dir, "outputs_snapshot.zip")
+
         if os.path.exists(state_path):
             with open(state_path, 'r') as f:
-                return DOMISessionState(**json.load(f))
+                state = DOMISessionState(**json.load(f))
+            
+            if os.path.exists(archive_path):
+                outputs_dir = config.get_outputs_dir(self.task_id)
+                if os.path.exists(outputs_dir):
+                    shutil.rmtree(outputs_dir)
+                shutil.unpack_archive(archive_path, outputs_dir)
+                logger.info(f"Restored outputs from {archive_path}")
+
+            return state
         return None
+
+    def has_snapshot(self) -> bool:
+        """Check if any snapshots exist for the current task."""
+        return bool(self.get_sorted_snapshots())
+
+    def get_sorted_snapshots(self) -> List[str]:
+        """Get a sorted list of all snapshots for the current task."""
+        if not os.path.exists(self.checkpoints_dir):
+            return []
+        return sorted(
+            [d for d in os.listdir(self.checkpoints_dir) if os.path.isdir(os.path.join(self.checkpoints_dir, d)) and d.startswith('snapshot_')],
+            reverse=True
+        )
 
     def _create_step_checkpoint(self, operation_id: str, step: OperationStep, phase: str):
         """Create a checkpoint for a specific step phase."""
@@ -257,7 +285,7 @@ class CheckpointManager:
             json.dump(checkpoint_data, f, indent=2, default=str)
         
         if config.VERBOSE_LOGGING:
-            print(f"   💾 Micro-checkpoint: {checkpoint_id}")
+            logger.debug(f"   💾 Micro-checkpoint: {checkpoint_id}")
 
     def _mark_step_completed(self, operation_id: str, step_id: str):
         """Mark a step as completed in the operation progress."""
@@ -291,7 +319,7 @@ class CheckpointManager:
             del self.operation_registry[operation_id]
             if self.current_operation == operation_id:
                 self.current_operation = None
-            print(f"✓ Marked operation complete: {operation_id}")
+            logger.info(f"✓ Marked operation complete: {operation_id}")
         
         # Instead of deleting, archive the operation file for history
         op_path = os.path.join(self.micro_checkpoints_dir, f"operation_{operation_id}.json")

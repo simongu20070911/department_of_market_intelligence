@@ -26,11 +26,11 @@ class PromptBuilder:
         """Add persona section."""
         return self.add_section(persona)
     
-    def add_communication_protocol_with_path_validation(self) -> 'PromptBuilder':
-        """Add enhanced communication protocol with path validation."""
-        from .base import COMMUNICATION_PROTOCOL_WITH_PATH_VALIDATION, PATH_VALIDATION_RULES
-        return (self.add_section(COMMUNICATION_PROTOCOL_WITH_PATH_VALIDATION, ['agent_name', 'outputs_dir', 'current_task'])
-                   .add_section(PATH_VALIDATION_RULES, ['outputs_dir']))
+    def add_communication_protocol(self) -> 'PromptBuilder':
+        """Add the refined communication protocol."""
+        from .base import COMMUNICATION_PROTOCOL, WORKFLOW_ERROR_DETECTION
+        return (self.add_section(COMMUNICATION_PROTOCOL, ['agent_name', 'outputs_dir', 'current_task'])
+                   .add_section(WORKFLOW_ERROR_DETECTION))
     
     def add_context(self) -> 'PromptBuilder':
         """Add standard context section."""
@@ -77,53 +77,28 @@ class PromptBuilder:
 
 
 def inject_template_variables(template: str, ctx, agent_name: str) -> str:
-    """Inject all template variables needed by the enhanced communication protocol."""
+    """Injects core template variables."""
     from .. import config
     from datetime import datetime
     
     domi_state = get_domi_state(ctx)
-
     task_id = domi_state.task_id or config.TASK_ID
-    outputs_dir = config.get_outputs_dir(task_id)
     
-    if "validator" in agent_name.lower():
-        validation_context = domi_state.validation.validation_context or "research_plan"
-        current_task = f"validate_{validation_context}"
-    else:
-        current_task = domi_state.current_task_description or "TASK_NOT_SET_IN_STATE"
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    current_year = str(datetime.now().year)
-    validation_version = str(domi_state.validation.validation_version or 0)
-    
-    plan_version = str(domi_state.metadata.get("plan_version") or 0)
-    next_version = str(int(plan_version) + 1)
-    
-    task_file_path = f"{config.TASKS_DIR}/{task_id}.md"
-    
-    artifact_to_validate = domi_state.validation.artifact_to_validate or "ARTIFACT_NOT_SET_IN_STATE"
-    
-    validation_context = domi_state.validation.validation_context or "research_plan"
-    
-    result = template
     replacements = {
         "{agent_name}": agent_name,
-        "{outputs_dir}": outputs_dir,
-        "{current_task}": current_task,
-        "{current_date}": current_date,
-        "{current_year}": current_year,
+        "{outputs_dir}": config.get_outputs_dir(task_id),
+        "{current_task}": domi_state.current_task_description or "N/A",
+        "{current_date}": datetime.now().strftime("%Y-%m-%d"),
+        "{current_year}": str(datetime.now().year),
         "{task_id}": task_id,
-        "{validation_version}": validation_version,
-        "{plan_version}": plan_version,
-        "{plan_version?}": plan_version,
-        "{next_version}": next_version,
-        "{task_file_path}": task_file_path,
-        "{artifact_to_validate}": artifact_to_validate,
-        "{validation_context}": validation_context,
+        "{validation_version}": str(domi_state.validation.validation_version or 0),
+        "{artifact_to_validate}": domi_state.validation.artifact_to_validate or "N/A",
     }
     
+    result = template
     for placeholder, value in replacements.items():
-        result = result.replace(placeholder, str(value) if value is not None else "")
-    
+        result = result.replace(placeholder, str(value))
+        
     return result
 
 

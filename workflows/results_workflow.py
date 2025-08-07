@@ -1,5 +1,5 @@
-# /department_of_market_intelligence/workflows/research_planning_workflow_context_aware.py
-"""Context-aware research planning workflow with intelligent validation."""
+# /department_of_market_intelligence/workflows/results_workflow.py
+"""Context-aware results workflow with intelligent validation."""
 
 from google.adk.agents import SequentialAgent, LoopAgent, BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
@@ -10,10 +10,10 @@ import os
 import re
 from typing import Callable
 
-from ..agents.chief_researcher import get_chief_researcher_agent
+from ..agents.coder import get_coder_agent
 from ..agents.validators import (
-    get_junior_validator_agent,
-    get_senior_validator_agent,
+    get_junior_validator_agent, 
+    get_senior_validator_agent, 
     get_meta_validator_check_agent,
     ParallelFinalValidationAgent
 )
@@ -75,8 +75,8 @@ class ContextAwareAgentWrapper(BaseAgent):
             yield event
 
 
-def get_context_aware_research_planning_workflow():
-    """Create research planning workflow with context-aware validation."""
+def get_context_aware_results_workflow():
+    """Create results workflow with context-aware validation."""
     
     # Create context-aware validator wrappers
     junior_validator = ContextAwareValidationWrapper(
@@ -89,17 +89,17 @@ def get_context_aware_research_planning_workflow():
         name="ContextAwareSeniorValidator"
     )
     
-    # Wrap the chief researcher to ensure it's recreated on each loop iteration
-    chief_researcher_wrapper = ContextAwareAgentWrapper(
-        agent_factory=get_chief_researcher_agent,
-        name="ContextAwareChiefResearcher"
+    # Wrap the coder to ensure it's recreated on each loop iteration
+    coder_wrapper = ContextAwareAgentWrapper(
+        agent_factory=get_coder_agent,
+        name="ContextAwareCoder"
     )
     
     # Define the refinement sequence
     refinement_sequence = SequentialAgent(
-        name="PlanRefinementSequence",
+        name="ResultsRefinementSequence",
         sub_agents=[
-            chief_researcher_wrapper,
+            coder_wrapper,
             junior_validator,
             senior_validator,
             get_meta_validator_check_agent(),
@@ -107,32 +107,21 @@ def get_context_aware_research_planning_workflow():
     )
     
     # Configure loop iterations
-    max_iterations, _ = enhanced_phase_manager.get_parallel_config(WorkflowPhase.RESEARCH_REFINEMENT)
+    max_iterations, _ = enhanced_phase_manager.get_parallel_config(WorkflowPhase.RESULTS_VALIDATION)
     if config.DRY_RUN_MODE:
         max_iterations = min(max_iterations, config.MAX_DRY_RUN_ITERATIONS)
-        logger.info(f"DRY RUN MODE: Limiting planning loop to {max_iterations} iterations")
+        logger.info(f"DRY RUN MODE: Limiting results loop to {max_iterations} iterations")
     
     # Create the main refinement loop
-    planning_loop = LoopAgent(
-        name="ResearchPlanningLoop",
+    results_loop = LoopAgent(
+        name="ResultsLoop",
         max_iterations=max_iterations,
         sub_agents=[refinement_sequence]
     )
     
-    # Create parallel final validation with context awareness
-    parallel_validation = ContextAwareValidationWrapper(
-        validator_factory=lambda: ParallelFinalValidationAgent(name="ParallelFinalValidation"),
-        name="ContextAwareParallelValidation"
-    )
-    
-    # A final check to ensure the status is correctly propagated after parallel validation
-    final_status_check = get_meta_validator_check_agent()
-
     return SequentialAgent(
-        name="ResearchPlanningWorkflow",
+        name="ResultsWorkflow",
         sub_agents=[
-            planning_loop,
-            parallel_validation,
-            final_status_check
+            results_loop,
         ]
     )

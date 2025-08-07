@@ -1,53 +1,15 @@
 # /department_of_market_intelligence/main.py
 import sys
-
-# Install output filters FIRST before any other imports
-class OutputFilter:
-    def __init__(self, stream):
-        self.stream = stream
-        self.suppress_lines = [
-            "auth_config or auth_config.auth_scheme is missing",
-            "Will skip authentication.Using FunctionTool",
-            "Generating tools list",
-            "[EXPERIMENTAL] BaseAuthenticatedTool",
-            "UserWarning",
-            "Loading server.ts",
-            "Setting up request handlers",
-            "[desktop-commander] Initialized",
-            "Loading configuration",
-            "Configuration loaded successfully",
-            "Connecting server",
-            "Server connected successfully",
-            "stdio_client",
-            "cancel scope",
-            "GeneratorExit",
-            "BaseExceptionGroup",
-            "RuntimeError: Attempted to exit cancel scope"
-        ]
-    
-    def write(self, text):
-        if not any(suppress in text for suppress in self.suppress_lines):
-            self.stream.write(text)
-    
-    def flush(self):
-        self.stream.flush()
-    
-    def __getattr__(self, name):
-        return getattr(self.stream, name)
-
-# Apply filters immediately - check env var since we can't import config yet
-import os as _temp_os
-if not _temp_os.environ.get('VERBOSE_LOGGING', '').lower() == 'true':
-    _orig_stdout = sys.stdout
-    _orig_stderr = sys.stderr
-    sys.stdout = OutputFilter(_orig_stdout)
-    sys.stderr = OutputFilter(_orig_stderr)
-
 import asyncio
 import os
 import warnings
 import logging
 import litellm
+
+from .utils.logger import get_logger, apply_output_filtering
+
+# Apply output filtering early
+apply_output_filtering()
 
 # Suppress MCP and asyncio cleanup warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*cancel scope.*")
@@ -63,6 +25,8 @@ from . import config
 from .config import TASKS_DIR, VERBOSE_LOGGING
 from .utils.task_loader import load_task_description, validate_task_id, get_task_file_path, create_task_loading_summary
 from .utils.state_model import DOMISessionState
+
+logger = get_logger(__name__)
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -81,85 +45,59 @@ os.environ['LITELLM_RETRY_STRATEGY'] = 'exponential_backoff'
 # os.environ['LITELLM_RETRY_ON_STATUS_CODES'] = '429,500,502,503,504'
 
 async def initialize_toolset():
-    """Initialize the appropriate toolset and register it globally."""
+    """Initialize the MCP toolset and register it globally."""
     from .tools.toolset_registry import toolset_registry
-    from . import config
-    import os
-
-    print(f"🔧 Initializing toolset for {config.EXECUTION_MODE} mode...")
-
-    if config.EXECUTION_MODE == "dry_run":
-        from .tools.mock_tools import mock_desktop_commander_toolset
-        toolset_registry.set_desktop_commander_toolset(mock_desktop_commander_toolset, is_real_mcp=False)
-        return
-
-    try:
-        from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
-        from mcp.client.stdio import StdioServerParameters
-        
-        project_root = os.path.dirname(os.path.abspath(__file__))
-        
-        toolset = MCPToolset(
-            connection_params=StdioConnectionParams(
-                server_params=StdioServerParameters(
-                    command=config.DESKTOP_COMMANDER_COMMAND,
-                    args=config.DESKTOP_COMMANDER_ARGS,
-                    cwd=project_root
-                ),
-                timeout=config.MCP_TIMEOUT_SECONDS
-            )
+    from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioConnectionParams
+    from mcp.client.stdio import StdioServerParameters
+    
+    logger.info("🔧 Initializing MCP toolset...")
+    
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    
+    toolset = MCPToolset(
+        connection_params=StdioConnectionParams(
+            server_params=StdioServerParameters(
+                command=config.DESKTOP_COMMANDER_COMMAND,
+                args=config.DESKTOP_COMMANDER_ARGS,
+                cwd=project_root
+            ),
+            timeout=config.MCP_TIMEOUT_SECONDS
         )
-        
-        toolset_registry.set_desktop_commander_toolset(toolset, is_real_mcp=True)
-        print(f"✅ Successfully initialized {config.EXECUTION_MODE} toolset.")
-
-    except Exception as e:
-        print(f"❌ Failed to create {config.EXECUTION_MODE} toolset: {e}")
-        print("🔄 Falling back to mock tools for safety.")
-        from .tools.mock_tools import mock_desktop_commander_toolset
-        toolset_registry.set_desktop_commander_toolset(mock_desktop_commander_toolset, is_real_mcp=False)
+    )
+    
+    toolset_registry.set_desktop_commander_toolset(toolset)
+    logger.info("✅ Successfully initialized MCP toolset.")
 
 
-async def main(resume_from_checkpoint: str = None):
+async def main(resume: bool = True):
     """Main function to orchestrate the research process.
     
     Args:
-        resume_from_checkpoint: Optional checkpoint ID to resume from
+        resume: If True, resumes from the latest checkpoint.
     """
     from .utils.checkpoint_manager import checkpoint_manager
     
     session_service = InMemorySessionService()
     artifact_service = InMemoryArtifactService()
 
-    if resume_from_checkpoint or (resume_from_checkpoint is None and checkpoint_manager.get_recovery_info()["can_resume"]):
-        if resume_from_checkpoint is None:
-            resume_from_checkpoint = checkpoint_manager._get_latest_checkpoint()
-        
-        print(f"🔄 RESUMING FROM CHECKPOINT: {resume_from_checkpoint}")
-        checkpoint_data = checkpoint_manager.load_checkpoint(resume_from_checkpoint)
-        
-        if checkpoint_data:
-            print(f"📋 Resuming Task ID: {checkpoint_data['task_id']}")
-            print(f"🎯 Resume Point: {checkpoint_data['phase']} → {checkpoint_data['step']}")
-            
-            initial_state = DOMISessionState.parse_obj(checkpoint_data['session_state'])
-            checkpoint_manager.agent_execution_count = checkpoint_data['agent_execution_count']
+    # Enhanced resume logic
+    if resume and checkpoint_manager.has_snapshot():
+        logger.info("🔄 Resuming from the latest snapshot...")
+        initial_state = checkpoint_manager.load_latest_snapshot()
+        if initial_state:
+            logger.info(f"📋 Resumed Task ID: {initial_state.task_id}")
+            logger.info(f"🎯 Resumed Phase: {initial_state.current_phase}")
         else:
-            print("❌ Failed to load checkpoint, starting fresh")
+            logger.error("❌ Failed to load snapshot, starting fresh.")
             initial_state = None
     else:
-        print(f"🚀 STARTING NEW TASK: {config.TASK_ID}")
+        logger.info(f"🚀 Starting new task: {config.TASK_ID}")
         initial_state = None
 
     await initialize_toolset()
 
-    if config.USE_SIMPLIFIED_WORKFLOW:
-        print("🔍 Using simplified workflow with centralized phase management")
-        from .workflows.root_workflow_simplified import get_simplified_root_workflow
-        root_agent = get_simplified_root_workflow()
-    else:
-        print("🔍 Using context-aware validation system")
-        root_agent = RootWorkflowAgentContextAware(name="MarketAlpha_Root")
+    logger.info("🔍 Using context-aware validation system")
+    root_agent = RootWorkflowAgentContextAware(name="MarketAlpha_Root")
 
     runner = Runner(
         agent=root_agent,
@@ -170,35 +108,35 @@ async def main(resume_from_checkpoint: str = None):
 
     if initial_state is None:
         if not validate_task_id(config.TASK_ID):
-            print(f"❌ ERROR: Task '{config.TASK_ID}' not found!")
-            print("\n" + create_task_loading_summary())
+            logger.error(f"❌ ERROR: Task '{config.TASK_ID}' not found!")
+            logger.error("\n" + create_task_loading_summary())
             return
         
         task_file_path = get_task_file_path(config.TASK_ID)
-        print(f"📋 Task Configuration:")
-        print(f"   • Task ID: {config.TASK_ID}")
-        print(f"   • Task File: {task_file_path}")
-        print(f"   • Tasks Directory: {TASKS_DIR}")
+        logger.info(f"📋 Task Configuration:")
+        logger.info(f"   • Task ID: {config.TASK_ID}")
+        logger.info(f"   • Task File: {task_file_path}")
+        logger.info(f"   • Tasks Directory: {TASKS_DIR}")
         
         try:
             task_content = load_task_description(config.TASK_ID)
-            print(f"   • Task Content: {len(task_content)} characters, {task_content.count(chr(10)) + 1} lines")
+            logger.info(f"   • Task Content: {len(task_content)} characters, {task_content.count(chr(10)) + 1} lines")
         except Exception as e:
-            print(f"❌ ERROR: Failed to load task '{config.TASK_ID}': {e}")
+            logger.error(f"❌ ERROR: Failed to load task '{config.TASK_ID}': {e}")
             return
         
         initial_state = DOMISessionState(
             task_id=config.TASK_ID,
             metadata={"task_file_path": task_file_path}
         )
-        print(f"--- Starting Research Task from {task_file_path} ---")
+        logger.info(f"--- Starting Research Task from {task_file_path} ---")
     else:
-        print(f"--- Resuming Research Task: {initial_state.metadata.get('task_file_path', 'Unknown')} ---")
+        logger.info(f"--- Resuming Research Task: {initial_state.metadata.get('task_file_path', 'Unknown')} ---")
     
     session = await session_service.create_session(
         app_name="ULTRATHINK_QUANTITATIVE",
         user_id="quant_team",
-        state=initial_state
+        state=initial_state.dict()
     )
     
     start_message = Content(parts=[Part(text="Begin the research process.")])
@@ -217,23 +155,21 @@ async def main(resume_from_checkpoint: str = None):
                                 sys.stdout.write(part.text)
                                 sys.stdout.flush()
                             else:
-                                print(f"\n[{event.author}]: {part.text.strip()}")
+                                logger.info(f"\n[{event.author}]: {part.text.strip()}")
                         if part.function_call:
-                            print(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
+                            logger.info(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
             else:
                 if event.content and event.content.parts:
                     for part in event.content.parts:
                         if part.text:
-                            print(f"[{event.author}]: {part.text.strip()}")
+                            logger.info(f"[{event.author}]: {part.text.strip()}")
                         if part.function_call:
-                            print(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
+                            logger.info(f"[{event.author}]: TOOL CALL: {part.function_call.name}")
     except (Exception, BaseExceptionGroup) as e:
         if "stdio_client" in str(e) or "cancel scope" in str(e):
-            print(f"\n⚠️  MCP connection cleanup (non-fatal)")
+            logger.warning(f"\n⚠️  MCP connection cleanup (non-fatal)")
         else:
-            print(f"\n❌ Workflow execution error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"\n❌ Workflow execution error: {e}", exc_info=True)
         
         try:
             from .tools.toolset_registry import toolset_registry
@@ -241,7 +177,7 @@ async def main(resume_from_checkpoint: str = None):
         except Exception:
             pass
     finally:
-        print("\n🔚 Research task completed.")
+        logger.info("\n🔚 Research task completed.")
 
 def parse_arguments():
     """Parse command line arguments."""
@@ -252,23 +188,14 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Execution Modes:
-  dry_run     Mock tools only, no real operations (safest)
-  sandbox     Real tools with project directory access (safe with real outputs)  
+  sandbox     Real tools with project directory access (safe with real outputs)
   production  Real tools with full system access (use with caution)
 
 Examples:
-  %(prog)s --mode dry_run      # Test with mock tools
   %(prog)s --mode sandbox      # Test with real tools safely
   %(prog)s --mode production   # Run with real file operations
   %(prog)s --task my_research  # Specify task ID
         """
-    )
-    
-    parser.add_argument(
-        '--mode', '--execution-mode',
-        choices=['dry_run', 'sandbox', 'production'],
-        default=None,
-        help='Execution mode (overrides EXECUTION_MODE env var)'
     )
     
     parser.add_argument(
@@ -317,114 +244,48 @@ def apply_cli_overrides(args):
     import os
     from . import config
     
-    if args.mode:
-        config.EXECUTION_MODE = args.mode
-        config.DRY_RUN_MODE = (args.mode == "dry_run")
-        config.DRY_RUN_SKIP_LLM = (args.mode == "dry_run")
-        os.environ["EXECUTION_MODE"] = args.mode
-        print(f"🔧 Execution mode set to: {args.mode}")
-    
     if args.task:
         config.TASK_ID = args.task
         os.environ["TASK_ID"] = args.task
-        print(f"📋 Task ID set to: {args.task}")
+        logger.info(f"📋 Task ID set to: {args.task}")
     
     if args.sandbox_dir:
         config.SANDBOX_BASE_DIR = args.sandbox_dir
         os.environ["SANDBOX_BASE_DIR"] = args.sandbox_dir
-        print(f"📁 Sandbox directory set to: {args.sandbox_dir}")
+        logger.info(f"📁 Sandbox directory set to: {args.sandbox_dir}")
     
     if args.no_cleanup:
         config.AUTO_CLEANUP_SANDBOX = False
         os.environ["AUTO_CLEANUP_SANDBOX"] = "false"
-        print("🚫 Sandbox auto-cleanup disabled")
-
-
-def print_execution_mode_warning():
-    """Print a warning about the current execution mode."""
-    info = {
-        "mode": config.EXECUTION_MODE,
-        "description": "",
-        "safety_level": "",
-        "file_operations": ""
-    }
-    
-    if config.EXECUTION_MODE == "dry_run":
-        info.update({
-            "description": "Mock tools only, no real operations",
-            "safety_level": "SAFE",
-            "file_operations": "Simulated only"
-        })
-    elif config.EXECUTION_MODE == "sandbox":
-        info.update({
-            "description": "Real tools with project directory access",
-            "safety_level": "SAFE",
-            "file_operations": f"Real outputs to {config.get_outputs_dir()}"
-        })
-    elif config.EXECUTION_MODE == "production":
-        info.update({
-            "description": "Real tools with actual file operations",
-            "safety_level": "DANGEROUS",
-            "file_operations": "REAL - affects actual files"
-        })
-    
-    print(f"\n🔧 EXECUTION MODE: {info['mode'].upper()}")
-    print(f"   📋 {info['description']}")
-    print(f"   🛡️  Safety: {info['safety_level']}")
-    print(f"   📁 Files: {info['file_operations']}")
-    
-    if config.EXECUTION_MODE == "production":
-        print("   🚨 WARNING: This mode creates real files and makes actual changes!")
-    elif config.EXECUTION_MODE == "sandbox":
-        print(f"   📊 Outputs: {config.get_outputs_dir()}")
-    
-    print()
-
-
-def validate_execution_mode():
-    """Validate the current execution mode configuration."""
-    valid_modes = ["dry_run", "sandbox", "production"]
-    
-    if config.EXECUTION_MODE not in valid_modes:
-        print(f"❌ Invalid execution mode: {config.EXECUTION_MODE}")
-        print(f"   Valid modes: {', '.join(valid_modes)}")
-        return False
-    
-    if config.EXECUTION_MODE == "sandbox":
-        pass
-    
-    return True
+        logger.info("🚫 Sandbox auto-cleanup disabled")
 
 
 def validate_configuration():
     """Validate system configuration before starting."""
     from . import config
+    from .utils.checkpoint_manager import CheckpointManager
+    import shutil
     
-    print("🔍 VALIDATING CONFIGURATION")
-    print("="*50)
+    logger.info("🔍 VALIDATING CONFIGURATION")
+    logger.info("="*50)
     
-    print_execution_mode_warning()
-    
-    if not validate_execution_mode():
-        print("❌ Configuration validation failed")
-        return False
-    
+    checkpoint_manager = CheckpointManager(config.TASK_ID)
+
     task_file = os.path.join(config.TASKS_DIR, f"{config.TASK_ID}.md")
     if not os.path.exists(task_file):
-        print(f"❌ Task file not found: {task_file}")
+        logger.error(f"❌ Task file not found: {task_file}")
         return False
     else:
-        print(f"✅ Task file found: {config.TASK_ID}.md")
-    
-    if config.EXECUTION_MODE == "production":
-        print("🚨 PRODUCTION MODE WARNINGS:")
-        print("   - Real files will be created/modified")
-        print("   - Changes cannot be easily undone")
-        print("   - Consider using sandbox mode for testing")
+        logger.info(f"✅ Task file found: {config.TASK_ID}.md")
         
-        print("\n⚠️  Auto-confirming production mode as requested.")
-    
-    print("✅ Configuration validation passed")
+    if config.CLEAR_OUTPUTS_ON_START and not checkpoint_manager.has_snapshot():
+        outputs_dir = config.get_outputs_dir(config.TASK_ID)
+        if os.path.exists(outputs_dir):
+            shutil.rmtree(outputs_dir)
+            logger.info(f"🗑️ Cleared outputs directory: {outputs_dir}")
+        os.makedirs(outputs_dir, exist_ok=True)
+
+    logger.info("✅ Configuration validation passed")
     return True
 
 
@@ -438,40 +299,10 @@ async def main_with_args():
         sys.exit(1)
     
     if args.validate_only:
-        print("✅ Validation complete")
+        logger.info("✅ Validation complete")
         return
     
-    if config.EXECUTION_MODE == "sandbox":
-        from .utils.sandbox_manager import initialize_sandbox, get_sandbox_manager
-        sandbox_root = initialize_sandbox()
-        sandbox_manager = get_sandbox_manager()
-        
-        print(f"🏗️  Sandbox initialized: {sandbox_manager.session_id}")
-        print(f"   📍 Location: {sandbox_root}")
-        
-        import atexit
-        if config.AUTO_CLEANUP_SANDBOX:
-            def cleanup_handler():
-                print(f"\n🧹 Cleaning up sandbox: {sandbox_manager.session_id}")
-                sandbox_manager.cleanup()
-            atexit.register(cleanup_handler)
-    
-    await main()
-    
-    if config.EXECUTION_MODE == "sandbox":
-        from .utils.sandbox_manager import get_sandbox_manager
-        sandbox_manager = get_sandbox_manager()
-        summary = sandbox_manager.get_summary()
-        
-        print(f"\n📊 SANDBOX SESSION SUMMARY")
-        print("="*40)
-        print(f"Session ID: {summary['session_id']}")
-        print(f"Files created: {summary.get('file_count', 0)}")
-        print(f"Total size: {summary.get('total_size_mb', 0)} MB")
-        print(f"Location: {summary.get('sandbox_path', 'N/A')}")
-        
-        if not config.AUTO_CLEANUP_SANDBOX:
-            print(f"💾 Sandbox preserved: {sandbox_manager.sandbox_root}")
+    await main(resume=args.resume)
 
 
 if __name__ == "__main__":

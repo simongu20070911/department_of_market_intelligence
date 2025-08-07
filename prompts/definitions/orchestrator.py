@@ -4,9 +4,9 @@ Orchestrator agent prompt construction.
 
 from ..builder import PromptBuilder
 from ..components.personas import ORCHESTRATOR_PERSONA
-from ..components.tasks import (
+from ..components.orchestrator_tasks import (
     GENERATE_IMPLEMENTATION_PLAN_TASK,
-    GENERATE_RESULTS_EXTRACTION_PLAN_TASK
+    REFINE_IMPLEMENTATION_PLAN_TASK
 )
 
 
@@ -46,12 +46,12 @@ feature_matrix_assembly → [model_rf, model_xgb, model_nn, model_linear]
     
     return builder\
         .add_persona(ORCHESTRATOR_PERSONA)\
-        .add_communication_protocol_with_path_validation()\
+        .add_communication_protocol()\
         .add_directory_structure_spec()\
         .add_context()\
         .add_tasks([
             GENERATE_IMPLEMENTATION_PLAN_TASK,
-            GENERATE_RESULTS_EXTRACTION_PLAN_TASK
+            REFINE_IMPLEMENTATION_PLAN_TASK
         ])\
         .add_section(parallelization_rules)\
         .add_section(parallel_structure_example)\

@@ -53,12 +53,12 @@ async def test_thinking_tokens_are_streamed_with_real_api():
     )
 
     # Store original config values
-    original_coder_model = config.CODER_MODEL
+    original_coder_model = config.AGENT_MODELS["CODER"]
     original_dry_run_mode = config.DRY_RUN_MODE
     original_skip_llm = config.DRY_RUN_SKIP_LLM
 
     # Configure for a real API call
-    config.CODER_MODEL = "gemini/gemini-1.5-flash-latest"
+    config.AGENT_MODELS["CODER"] = "gemini/gemini-1.5-flash-latest"
     config.DRY_RUN_MODE = False
     config.DRY_RUN_SKIP_LLM = False
 
@@ -93,7 +93,7 @@ async def test_thinking_tokens_are_streamed_with_real_api():
             os.remove(output_path)
         
         # Restore original config and patched methods
-        config.CODER_MODEL = original_coder_model
+        config.AGENT_MODELS["CODER"] = original_coder_model
         config.DRY_RUN_MODE = original_dry_run_mode
         config.DRY_RUN_SKIP_LLM = original_skip_llm
         print("--- Test Finished ---")

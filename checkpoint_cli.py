@@ -17,6 +17,9 @@ from department_of_market_intelligence.utils.operation_tracking import (
     resume_failed_operations
 )
 from department_of_market_intelligence.main import main
+from department_of_market_intelligence.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def list_checkpoints():
@@ -24,44 +27,44 @@ def list_checkpoints():
     checkpoints = checkpoint_manager.list_checkpoints()
     
     if not checkpoints:
-        print("📋 No checkpoints found")
+        logger.info("📋 No checkpoints found")
         return
     
-    print(f"📋 Available Checkpoints for Task: {config.TASK_ID}")
-    print("=" * 80)
-    print(f"{'ID':<50} {'Phase':<20} {'Step':<15} {'Date':<20}")
-    print("-" * 80)
+    logger.info(f"📋 Available Checkpoints for Task: {config.TASK_ID}")
+    logger.info("=" * 80)
+    logger.info(f"{'ID':<50} {'Phase':<20} {'Step':<15} {'Date':<20}")
+    logger.info("-" * 80)
     
     for cp in checkpoints:
         timestamp = datetime.fromisoformat(cp['timestamp'].replace('Z', '+00:00'))
         date_str = timestamp.strftime('%Y-%m-%d %H:%M:%S')
         
-        print(f"{cp['checkpoint_id'][:47]:<50} {cp['phase']:<20} {cp['step']:<15} {date_str:<20}")
+        logger.info(f"{cp['checkpoint_id'][:47]:<50} {cp['phase']:<20} {cp['step']:<15} {date_str:<20}")
 
 
 def show_recovery_info():
     """Show recovery information."""
     info = checkpoint_manager.get_recovery_info()
     
-    print(f"🔍 Recovery Information")
-    print("=" * 50)
-    print(f"Task ID: {info['task_id']}")
-    print(f"Available Checkpoints: {info['checkpoints_available']}")
-    print(f"Can Resume: {'✅ Yes' if info['can_resume'] else '❌ No'}")
+    logger.info(f"🔍 Recovery Information")
+    logger.info("=" * 50)
+    logger.info(f"Task ID: {info['task_id']}")
+    logger.info(f"Available Checkpoints: {info['checkpoints_available']}")
+    logger.info(f"Can Resume: {'✅ Yes' if info['can_resume'] else '❌ No'}")
     
     if info['latest_checkpoint']:
-        print(f"Latest Checkpoint: {info['latest_checkpoint']}")
+        logger.info(f"Latest Checkpoint: {info['latest_checkpoint']}")
     
-    print(f"Checkpoints Directory: {info['checkpoints_dir']}")
-    print(f"Outputs Directory: {info['outputs_dir']}")
+    logger.info(f"Checkpoints Directory: {info['checkpoints_dir']}")
+    logger.info(f"Outputs Directory: {info['outputs_dir']}")
 
 
 def delete_checkpoint(checkpoint_id: str):
     """Delete a specific checkpoint."""
     if checkpoint_manager.delete_checkpoint(checkpoint_id):
-        print(f"✅ Checkpoint deleted: {checkpoint_id}")
+        logger.info(f"✅ Checkpoint deleted: {checkpoint_id}")
     else:
-        print(f"❌ Failed to delete checkpoint: {checkpoint_id}")
+        logger.error(f"❌ Failed to delete checkpoint: {checkpoint_id}")
 
 
 def cleanup_checkpoints(keep_count: int):
@@ -74,13 +77,13 @@ async def run_task(task_id: str = None, resume_from: str = None):
     if task_id:
         # Update task ID in config
         config.TASK_ID = task_id
-        print(f"🎯 Task ID set to: {task_id}")
+        logger.info(f"🎯 Task ID set to: {task_id}")
     
     if resume_from:
-        print(f"🔄 Resuming from checkpoint: {resume_from}")
+        logger.info(f"🔄 Resuming from checkpoint: {resume_from}")
         await main(resume_from_checkpoint=resume_from)
     else:
-        print(f"🚀 Starting new task: {config.TASK_ID}")
+        logger.info(f"🚀 Starting new task: {config.TASK_ID}")
         await main()
 
 
@@ -152,7 +155,7 @@ Examples:
         if args.resume:
             resume_from = checkpoint_manager._get_latest_checkpoint()
             if not resume_from:
-                print("❌ No checkpoints available for resumption")
+                logger.error("❌ No checkpoints available for resumption")
                 return
         elif args.resume_from:
             resume_from = args.resume_from
@@ -166,13 +169,13 @@ Examples:
         cleanup_checkpoints(args.keep)
         
     elif args.command == 'config':
-        print(f"Configuration:")
-        print(f"  Task ID: {config.TASK_ID}")
-        print(f"  Enable Checkpointing: {config.ENABLE_CHECKPOINTING}")
-        print(f"  Checkpoint Interval: {config.CHECKPOINT_INTERVAL}")
-        print(f"  Dry Run Mode: {config.DRY_RUN_MODE}")
-        print(f"  Outputs Dir: {config.OUTPUTS_DIR}")
-        print(f"  Checkpoints Dir: {config.CHECKPOINTS_DIR}")
+        logger.info(f"Configuration:")
+        logger.info(f"  Task ID: {config.TASK_ID}")
+        logger.info(f"  Enable Checkpointing: {config.ENABLE_CHECKPOINTING}")
+        logger.info(f"  Checkpoint Interval: {config.CHECKPOINT_INTERVAL}")
+        logger.info(f"  Dry Run Mode: {config.DRY_RUN_MODE}")
+        logger.info(f"  Outputs Dir: {config.OUTPUTS_DIR}")
+        logger.info(f"  Checkpoints Dir: {config.CHECKPOINTS_DIR}")
         
     else:
         parser.print_help()
