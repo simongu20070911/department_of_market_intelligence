@@ -14,6 +14,8 @@ except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
     import config
 
+import json
+
 # Global state for tracking dry run operations
 class DryRunFileSystem:
     """Simulates a file system for comprehensive dry run testing."""
@@ -321,6 +323,71 @@ def compare_with_model_structure():
     
     return len(missing) == 0 and len(extra) == 0
 
+def validate_json(path: str) -> Dict[str, Any]:
+    """
+    Validate that a file contains valid JSON.
+    This tool is specifically for validators to check JSON syntax.
+    
+    Args:
+        path: Path to the JSON file to validate
+        
+    Returns:
+        A dictionary with validation results:
+        - is_valid: Boolean indicating if JSON is valid
+        - error: Error message if invalid, None if valid
+        - has_javascript: Boolean indicating if JavaScript code was detected
+        - javascript_indicators: List of JS code patterns found
+    """
+    try:
+        # Try to read the file content
+        if path in dry_run_fs.files:
+            content = dry_run_fs.files[path]
+        else:
+            return {
+                "is_valid": False,
+                "error": f"File not found: {path}",
+                "has_javascript": False,
+                "javascript_indicators": []
+            }
+        
+        # Check for JavaScript code patterns
+        js_patterns = []
+        if "..." in content and "Array" in content:
+            js_patterns.append("Spread operator (...)")
+        if "Array.from(" in content:
+            js_patterns.append("Array.from() method")
+        if "=>" in content:
+            js_patterns.append("Arrow function (=>)")
+        if "`" in content:
+            js_patterns.append("Template literals (backticks)")
+        if "//" in content or "/*" in content:
+            js_patterns.append("JavaScript comments")
+        
+        # Try to parse as JSON
+        try:
+            parsed = json.loads(content)
+            return {
+                "is_valid": True,
+                "error": None,
+                "has_javascript": len(js_patterns) > 0,
+                "javascript_indicators": js_patterns
+            }
+        except json.JSONDecodeError as e:
+            return {
+                "is_valid": False,
+                "error": f"JSON parse error at line {e.lineno}, column {e.colno}: {e.msg}",
+                "has_javascript": len(js_patterns) > 0,
+                "javascript_indicators": js_patterns
+            }
+            
+    except Exception as e:
+        return {
+            "is_valid": False,
+            "error": f"Unexpected error: {str(e)}",
+            "has_javascript": False,
+            "javascript_indicators": []
+        }
+
 # Create the enhanced mock toolset
 mock_desktop_commander_toolset = [
     FunctionTool(read_file),
@@ -328,4 +395,5 @@ mock_desktop_commander_toolset = [
     FunctionTool(create_directory),
     FunctionTool(list_directory),
     FunctionTool(search_files),
+    FunctionTool(validate_json),
 ]

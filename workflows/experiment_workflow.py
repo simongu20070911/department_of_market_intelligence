@@ -8,6 +8,7 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
 from ..agents.experiment_executor import get_experiment_executor_agent
 from ..agents.validators import get_junior_validator_agent, get_senior_validator_agent, MetaValidatorCheckAgent, get_parallel_final_validation_agent
+from ..utils.phase_manager import WorkflowPhase
 from .. import config
 from .coder_workflow import create_validation_loop
 
@@ -30,14 +31,14 @@ class ExperimentWorkflowAgent(BaseAgent):
             )
 
         # Set the context for experiment execution validation
-        ctx.session.state['validation_context'] = 'experiment_execution'
-        ctx.session.state['artifact_to_validate'] = ctx.session.state.get('execution_log_artifact') or ctx.session.state.get('implementation_manifest_artifact')
-        ctx.session.state['validation_version'] = 0
+        ctx.session.state['domi_validation_context'] = 'experiment_execution'
+        ctx.session.state['domi_artifact_to_validate'] = ctx.session.state.get('domi_execution_log_artifact') or ctx.session.state.get('domi_implementation_manifest_artifact')
+        ctx.session.state['domi_validation_version'] = 0
         
         async for event in self._executor_loop.run_async(ctx):
             yield event
         
-        if ctx.session.state.get('execution_status') == 'critical_error':
+        if ctx.session.state.get('domi_execution_status') == 'critical_error':
             print("EXPERIMENT WORKFLOW: Critical execution error confirmed by validators. Aborting.")
             return
         

@@ -10,31 +10,31 @@ You need to:
 2. Develop a comprehensive research plan for quantitative market alpha 
 3. Save the plan to the state"""
 
-# Orchestrator contexts  
-ORCHESTRATOR_CONTEXT = """- The research plan to implement is at `state['research_plan_artifact']`
-- Current validation version: {validation_version}
-- Task ID: {task_id}"""
+# Orchestrator contexts
+ORCHESTRATOR_CONTEXT = """- The research plan to implement is at `state['domi_research_plan_artifact']`
+- Current validation version: {domi_validation_version}
+- Task ID: {domi_task_id}"""
 
 # Experiment Executor contexts
-EXPERIMENT_EXECUTOR_CONTEXT = """- The implementation plan is in the artifact at `state['implementation_manifest_artifact']`.
+EXPERIMENT_EXECUTOR_CONTEXT = """- The implementation plan is in the artifact at `state['domi_implementation_manifest_artifact']`.
 - The code to execute is in the artifacts listed in the manifest."""
 
 # Coder contexts
 CODER_CONTEXT = """- Your specific task is defined in the state dictionary `state['coder_subtask']`. This is a JSON object containing `task_id`, `description`, `dependencies`, `input_artifacts`, `output_artifacts`, and `success_criteria`.
-- If this is a refinement iteration, the critique will be in `state['senior_critique_artifact']`."""
+- If this is a refinement iteration, the critique will be in `state['domi_senior_critique_artifact']`."""
 
 # Junior Validator contexts
-JUNIOR_VALIDATOR_CONTEXT = """- Task Description: {task_description}
-- Artifact to validate: {artifact_to_validate}
-- Validation context: {validation_context?}
-- Validation version: {validation_version}"""
+JUNIOR_VALIDATOR_CONTEXT = """- Task Description: {domi_task_description}
+- Artifact to validate: {domi_artifact_to_validate}
+- Validation context: {domi_validation_context?}
+- Validation version: {domi_validation_version}"""
 
 # Senior Validator contexts
-SENIOR_VALIDATOR_CONTEXT = """- Task Description: {task_description}
-- Primary artifact: {artifact_to_validate}
-- Junior critique: {junior_critique_artifact}
-- Validation context: {validation_context?}
-- Validation version: {validation_version}"""
+SENIOR_VALIDATOR_CONTEXT = """- Task Description: {domi_task_description}
+- Primary artifact: {domi_artifact_to_validate}
+- Junior critique: {domi_junior_critique_artifact}
+- Validation context: {domi_validation_context?}
+- Validation version: {domi_validation_version}"""
 
 # Validation context types
 VALIDATION_CONTEXTS = {
@@ -111,6 +111,22 @@ JUNIOR_VALIDATION_PROMPTS = {
     "implementation_manifest": """
             ### Critical Issues in Implementation Manifest ###
             Focus on these potential show-stoppers:
+            
+            0. **JSON VALIDITY - MUST CHECK FIRST**:
+               - **CRITICAL**: Is the file valid, parseable JSON?
+               - Try to parse it with a JSON parser - does it succeed?
+               - Look for JavaScript code that doesn't belong in JSON:
+                 * Spread operators (...Array)
+                 * Array.from() or other JS methods
+                 * Template literals with backticks
+                 * Arrow functions (=>)
+                 * Comments (// or /* */)
+               - Check for proper JSON syntax:
+                 * All strings in double quotes
+                 * No trailing commas
+                 * Boolean values lowercase (true/false)
+                 * No undefined or null where not allowed
+               - If JSON is invalid, mark as CRITICAL ERROR immediately
             
             1. **Missing Dependencies**:
                - Data dependencies not explicitly stated

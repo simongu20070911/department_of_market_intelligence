@@ -118,6 +118,9 @@ STREAMING_ENABLED = True # Set to True to stream the thinking process of the age
 # Execution mode options: "dry_run", "sandbox", "production"
 EXECUTION_MODE = os.getenv("EXECUTION_MODE", "sandbox")
 
+# --- Workflow Configuration ---
+USE_SIMPLIFIED_WORKFLOW = os.getenv("USE_SIMPLIFIED_WORKFLOW", "true").lower() == "true"  # Use simplified workflow with centralized phase management
+
 # Legacy dry run mode support (for backward compatibility)
 DRY_RUN_MODE = (EXECUTION_MODE == "dry_run")  # Computed from EXECUTION_MODE
 MAX_DRY_RUN_ITERATIONS = 3  # Limit iterations in dry run mode to catch bugs early

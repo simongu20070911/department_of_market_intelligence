@@ -61,15 +61,19 @@ def get_junior_validator_agent():
     from ..tools.toolset_registry import toolset_registry
     desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
     
+    # Add JSON validator tool for validators
+    from ..tools.json_validator import json_validator_tool
+    
     # Wrap in list if it's a real MCP toolset, mock tools are already a list
     if toolset_registry.is_using_real_mcp():
-        tools = [desktop_commander_toolset]
+        tools = [desktop_commander_toolset, json_validator_tool]
     else:
-        tools = desktop_commander_toolset
+        # Mock tools are already a list, add json validator
+        tools = desktop_commander_toolset + [json_validator_tool]
         
     def instruction_provider(ctx: ReadonlyContext) -> str:
         from ..prompts.builder import inject_template_variables_with_context_preloading
-        context_type = ctx.state.get("validation_context", "research_plan")
+        context_type = ctx.state.get("domi_validation_context", "research_plan")
         base_instruction = JUNIOR_VALIDATOR_INSTRUCTIONS.get(context_type, JUNIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
         return inject_template_variables_with_context_preloading(base_instruction, ctx, "Junior_Validator")
 
@@ -97,15 +101,19 @@ def get_senior_validator_agent():
     from ..tools.toolset_registry import toolset_registry
     desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
     
+    # Add JSON validator tool for validators
+    from ..tools.json_validator import json_validator_tool
+    
     # Wrap in list if it's a real MCP toolset, mock tools are already a list
     if toolset_registry.is_using_real_mcp():
-        tools = [desktop_commander_toolset]
+        tools = [desktop_commander_toolset, json_validator_tool]
     else:
-        tools = desktop_commander_toolset
+        # Mock tools are already a list, add json validator
+        tools = desktop_commander_toolset + [json_validator_tool]
         
     def instruction_provider(ctx: ReadonlyContext) -> str:
         from ..prompts.builder import inject_template_variables_with_context_preloading
-        context_type = ctx.state.get("validation_context", "research_plan")
+        context_type = ctx.state.get("domi_validation_context", "research_plan")
         base_instruction = SENIOR_VALIDATOR_INSTRUCTIONS.get(context_type, SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"])
         return inject_template_variables_with_context_preloading(base_instruction, ctx, "Senior_Validator")
 
@@ -196,9 +204,9 @@ def create_specialized_parallel_validator(validator_type: str, index: int, valid
         Today's date is: {{current_date}}
 
         ### Context & State ###
-        Artifact to validate: {{artifact_to_validate}}
-        Validation context: {{validation_context}}
-        Validation version: {{validation_version}}
+        Artifact to validate: {{domi_artifact_to_validate}}
+        Validation context: {{domi_validation_context}}
+        Validation version: {{domi_validation_version}}
 
         ### CRITICAL FILE HANDLING PROTOCOL ###
         1. **PRIMARY ATTEMPT**: Try to read the exact artifact path provided
@@ -264,7 +272,7 @@ class ParallelFinalValidationAgent(BaseAgent):
     
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         # Get validation context from state
-        validation_context = ctx.session.state.get('validation_context', 'research_plan')
+        validation_context = ctx.session.state.get('domi_validation_context', 'research_plan')
         
         # Always create new validators to avoid state leakage between loops
         validators = []
@@ -294,11 +302,11 @@ class ParallelFinalValidationAgent(BaseAgent):
         
         if critical_issues:
             print(f"PARALLEL VALIDATION: {len(critical_issues)} critical issues found")
-            ctx.session.state['validation_status'] = 'critical_error'
-            ctx.session.state['consolidated_validation_issues'] = critical_issues
+            ctx.session.state['domi_validation_status'] = 'critical_error'
+            ctx.session.state['domi_consolidated_validation_issues'] = critical_issues
         else:
             print("PARALLEL VALIDATION: All validators passed")
-            ctx.session.state['validation_status'] = 'approved'
+            ctx.session.state['domi_validation_status'] = 'approved'
         
         yield Event(
             author=self.name,
@@ -324,13 +332,13 @@ class ParallelFinalValidationAgent(BaseAgent):
         import re
         from .. import config
         
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
         outputs_dir = config.get_outputs_dir(task_id)
-        validation_version = ctx.session.state.get('validation_version', 0)
+        validation_version = ctx.session.state.get('domi_validation_version', 0)
         
         critical_issues = []
         validators_with_issues = []
-        validation_context = ctx.session.state.get('validation_context', 'research_plan')
+        validation_context = ctx.session.state.get('domi_validation_context', 'research_plan')
         
         # Get the list of validator types that were actually run for this context
         validator_types_to_check = [self._get_validator_type(validation_context, i) for i in range(config.PARALLEL_VALIDATION_SAMPLES)]
@@ -374,10 +382,10 @@ class ParallelFinalValidationAgent(BaseAgent):
         
         # Update session state based on findings
         if critical_issues:
-            ctx.session.state['validation_status'] = 'critical_error'
+            ctx.session.state['domi_validation_status'] = 'critical_error'
             print(f"PARALLEL VALIDATION: Found critical issues from validators: {', '.join(set(validators_with_issues))}")
         else:
-            ctx.session.state['validation_status'] = 'approved'
+            ctx.session.state['domi_validation_status'] = 'approved'
             print("PARALLEL VALIDATION: No critical issues found by any validator")
         
         return critical_issues
@@ -387,7 +395,7 @@ class ParallelFinalValidationAgent(BaseAgent):
         import os
         from .. import config
         
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
         outputs_dir = config.get_outputs_dir(task_id)
         critiques_dir = os.path.join(outputs_dir, "planning", "critiques")
         
@@ -415,7 +423,7 @@ def _find_latest_critique(ctx: InvocationContext, validator_role: str) -> Option
     import os
     from .. import config
     
-    task_id = ctx.session.state.get('task_id', config.TASK_ID)
+    task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
     outputs_dir = config.get_outputs_dir(task_id)
     # This is a simplification; a more robust solution would check the current validation context
     critiques_dir = os.path.join(outputs_dir, "planning", "critiques")
@@ -463,9 +471,9 @@ async def _parse_status_from_critique(critique_path: str) -> Optional[str]:
 
 # This is not an LLM agent. It's a simple control-flow agent.
 class MetaValidatorCheckAgent(BaseAgent):
-    """Checks the state for 'validation_status' and escalates based on the status."""
+    """Checks the state for 'domi_validation_status' and escalates based on the status."""
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
-        status = ctx.session.state.get("validation_status")
+        status = ctx.session.state.get("domi_validation_status")
 
         # If status is not set (i.e., not a dry run), parse it from the senior validator's output file.
         if status is None or status == "pending":
@@ -475,17 +483,17 @@ class MetaValidatorCheckAgent(BaseAgent):
                 parsed_status = await _parse_status_from_critique(latest_senior_critique)
                 if parsed_status:
                     status = parsed_status
-                    ctx.session.state["validation_status"] = status
+                    ctx.session.state["domi_validation_status"] = status
                     print(f"META VALIDATOR: Parsed status '{status}' from critique.")
                 else:
                     print("META VALIDATOR: Could not parse status from critique, assuming 'rejected' to continue loop.")
                     status = "rejected"
-                    ctx.session.state['revision_reason'] = 'senior_validation_parse_error'
+                    ctx.session.state['domi_revision_reason'] = 'senior_validation_parse_error'
             else:
                 # This can happen on the very first run before any critique is written.
                 print("META VALIDATOR: No senior critique file found, assuming 'rejected' to continue loop.")
                 status = "rejected"
-                ctx.session.state['revision_reason'] = 'no_senior_critique_found'
+                ctx.session.state['domi_revision_reason'] = 'no_senior_critique_found'
         
         if status == "approved":
             print(f"META VALIDATOR: Status '{status}' - proceeding to next phase")
@@ -493,33 +501,33 @@ class MetaValidatorCheckAgent(BaseAgent):
         elif status == "critical_error":
             print(f"META VALIDATOR: Status '{status}' - escalating for replanning")
             # Set execution_status to trigger replanning at root level
-            ctx.session.state['execution_status'] = 'critical_error'
+            ctx.session.state['domi_execution_status'] = 'critical_error'
             should_escalate = True
         else:  # rejected
             print(f"META VALIDATOR: Status '{status}' - continuing refinement loop")
             should_escalate = False
             # Set explicit revision status
-            ctx.session.state["validation_status"] = "needs_revision_after_junior_senior_validation"
-            if 'revision_reason' not in ctx.session.state:
-                ctx.session.state['revision_reason'] = 'senior_validation_rejected'
+            ctx.session.state["domi_validation_status"] = "needs_revision_after_junior_senior_validation"
+            if 'domi_revision_reason' not in ctx.session.state:
+                ctx.session.state['domi_revision_reason'] = 'senior_validation_rejected'
             
             # Determine the current phase to set the appropriate task
-            current_phase = ctx.session.state.get("current_phase", "planning")
+            current_phase = ctx.session.state.get("domi_current_phase", "planning")
             
             if current_phase == "planning":
                 # For planning phase, trigger refine_plan task (not generate_initial_plan)
                 # to ensure Chief Researcher creates a new version
-                ctx.session.state["current_task"] = "refine_plan"
+                ctx.session.state["domi_current_task"] = "refine_plan"
                 
                 # Increment the version for the refinement
-                new_version = ctx.session.state.get("plan_version", 0) + 1
-                ctx.session.state["plan_version"] = new_version
-                ctx.session.state["validation_version"] = new_version
+                new_version = ctx.session.state.get("domi_plan_version", 0) + 1
+                ctx.session.state["domi_plan_version"] = new_version
+                ctx.session.state["domi_validation_version"] = new_version
                 
                 # Update the artifact path for the new version
-                task_id = ctx.session.state.get('task_id', 'sample_research_task')
+                task_id = ctx.session.state.get('domi_task_id', 'sample_research_task')
                 outputs_dir = f"/home/gaen/agents_gaen/department_of_market_intelligence/outputs/{task_id}"
-                ctx.session.state["artifact_to_validate"] = f"{outputs_dir}/planning/research_plan_v{new_version}.md"
+                ctx.session.state["domi_artifact_to_validate"] = f"{outputs_dir}/planning/research_plan_v{new_version}.md"
                 
                 print(f"   Setting task to 'refine_plan' for version {new_version}")
             else:

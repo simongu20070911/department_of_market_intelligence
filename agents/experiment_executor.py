@@ -38,10 +38,10 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
         
         # FIX: Add special handling for results extraction task
         # This task involves running a single script, not a manifest of experiments.
-        if ctx.session.state.get('current_task') == 'execute_results_extraction':
+        if ctx.session.state.get('domi_current_task') == 'execute_results_extraction':
             print("🔬 Bypassing manifest parsing for single-script execution task.")
             # The prompt for the executor should guide it to find and run the
-            # 'results_extraction_script_artifact'.
+            # 'domi_results_extraction_script_artifact'.
             # We fall back to the standard LLM execution, which will follow the prompt.
             async for event in super()._run_async_impl(ctx):
                 yield event
@@ -55,8 +55,8 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
             return
         
         # Use a unique key to track if this pre-execution has been done
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
-        validation_version = ctx.session.state.get('validation_version', 0)
+        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
+        validation_version = ctx.session.state.get('domi_validation_version', 0)
         execution_executed_key = f"executor_planning_executed_v{validation_version}_for_{task_id}"
 
         if ctx.session.state.get(execution_executed_key):
@@ -81,8 +81,8 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
             return
         
         # Get implementation plan and task info from session state
-        implementation_plan_path = ctx.session.state.get('implementation_manifest_artifact')
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        implementation_plan_path = ctx.session.state.get('domi_implementation_manifest_artifact')
+        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
         
         if not implementation_plan_path:
             print("⚠️  No implementation plan found - running standard execution")
@@ -100,9 +100,9 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
             print("   ✅ Marking execution as complete with no experiments to run")
             
             # Set success status since having no experiments is valid
-            ctx.session.state['execution_status'] = 'success'
-            ctx.session.state['execution_complete'] = True
-            ctx.session.state['experiments_run_count'] = 0
+            ctx.session.state['domi_execution_status'] = 'success'
+            ctx.session.state['domi_execution_complete'] = True
+            ctx.session.state['domi_experiments_run_count'] = 0
             
             # Create a minimal execution journal
             execution_journal_path = f"{config.get_outputs_dir(task_id)}/execution/execution_journal.md"
@@ -110,7 +110,7 @@ class MicroCheckpointExperimentExecutor(LlmAgent):
             
             journal_content = f"""# Execution Journal
             
-**Date**: {ctx.session.state.get('current_date', 'Unknown')}
+**Date**: {ctx.session.state.get('domi_current_date', 'Unknown')}
 **Task**: {task_id}
 **Status**: Success (No experiments to execute)
 
@@ -132,7 +132,7 @@ Execution phase completed successfully with no experiments to run.
             with open(execution_journal_path, 'w') as f:
                 f.write(journal_content)
             
-            ctx.session.state['execution_log_artifact'] = execution_journal_path
+            ctx.session.state['domi_execution_log_artifact'] = execution_journal_path
             
             yield Event(
                 author=self.name,
@@ -244,8 +244,17 @@ Execution phase completed successfully with no experiments to run.
                 print(f"⚠️  Implementation plan path does not exist. Assuming content is raw JSON.")
                 manifest_data = json.loads(plan_path)
             else:
-                with open(plan_path, 'r') as f:
-                    manifest_data = json.load(f)
+                # Use the smart JSON fixer to handle LLM-generated JSON issues
+                from ..tools.json_fixer import load_implementation_manifest
+                success, manifest_data, message = load_implementation_manifest(plan_path)
+                
+                if not success:
+                    print(f"❌ Failed to parse manifest with fixer: {message}")
+                    print("⚠️  Attempting basic JSON parse as fallback...")
+                    with open(plan_path, 'r') as f:
+                        manifest_data = json.load(f)
+                else:
+                    print(f"✅ Successfully parsed manifest: {message}")
 
             # FIX: Handle case where manifest is a list instead of a dict
             if isinstance(manifest_data, list):
@@ -395,11 +404,11 @@ Execution phase completed successfully with no experiments to run.
     
     async def _create_execution_summary(self, ctx: InvocationContext, results: List[Dict[str, Any]]):
         """Create a summary of all experiment executions."""
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
         outputs_dir = config.get_outputs_dir(task_id)
         
         summary = {
-            "task_id": task_id,
+            "domi_task_id": task_id,
             "total_experiments": len(results),
             "successful_experiments": len([r for r in results if r.get("status") == "completed"]),
             "failed_experiments": len([r for r in results if r.get("status") == "failed"]),
@@ -418,8 +427,8 @@ Execution phase completed successfully with no experiments to run.
             json.dump(summary, f, indent=2, default=str)
         
         # Update session state
-        ctx.session.state['execution_log_artifact'] = summary_path
-        ctx.session.state['micro_checkpoints_enabled'] = True
+        ctx.session.state['domi_execution_log_artifact'] = summary_path
+        ctx.session.state['domi_micro_checkpoints_enabled'] = True
         
         print(f"💾 Micro-checkpoint summary: {summary_path}")
 
@@ -448,7 +457,7 @@ def get_experiment_executor_agent():
         model=get_llm_model(config.EXECUTOR_MODEL),
         instruction_provider=instruction_provider,
         tools=tools,
-        output_key="execution_log_artifact"
+        output_key="domi_execution_log_artifact"
     )
     
     return agent

@@ -41,8 +41,8 @@ class MicroCheckpointChiefResearcher(LlmAgent):
             return
         
         # Use a unique key to track if this pre-planning has been done for the current task version
-        plan_version = ctx.session.state.get('plan_version', 0)
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        plan_version = ctx.session.state.get('domi_plan_version', 0)
+        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
         planning_executed_key = f"chief_researcher_planning_executed_v{plan_version}_for_{task_id}"
 
         if ctx.session.state.get(planning_executed_key):
@@ -56,10 +56,11 @@ class MicroCheckpointChiefResearcher(LlmAgent):
         researcher_ops = [op for op in recoverable_ops if "Chief_Researcher" in op.get("agent_name", "")]
         
         # Check if we're in a revision scenario (refine_plan task)
-        current_task = ctx.session.state.get('current_task', 'generate_initial_plan')
+        current_task = ctx.session.state.get('domi_current_task', 'generate_initial_plan')
+        current_phase = ctx.session.state.get('domi_current_phase', 'planning')
         
-        # Only resume operations if we're not starting a new revision
-        if researcher_ops and config.MICRO_CHECKPOINT_AUTO_RESUME and current_task != 'refine_plan':
+        # Only resume operations if we're in planning phase and not starting a new revision
+        if researcher_ops and config.MICRO_CHECKPOINT_AUTO_RESUME and current_task != 'refine_plan' and current_phase == 'planning':
             print(f"🔄 Found {len(researcher_ops)} recoverable research operations")
             for op in researcher_ops:
                 print(f"   • {op['operation_id']}: {op['progress']} steps completed")
@@ -84,7 +85,7 @@ class MicroCheckpointChiefResearcher(LlmAgent):
             return
         
         # Get task info from session state
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
         outputs_dir = config.get_outputs_dir(task_id)
         
         # Define research planning steps
@@ -97,7 +98,7 @@ class MicroCheckpointChiefResearcher(LlmAgent):
                 "max_retries": 2
             },
             {
-                "filename": f"{outputs_dir}/planning/research_scope_v{plan_version}.md", 
+                "filename": f"{outputs_dir}/planning/research_scope_v{plan_version}.md",
                 "step_name": "Define Research Scope",
                 "description": "Establish clear boundaries, limitations, and out-of-scope items for the research to ensure focus.",
                 "timeout": 180,
@@ -220,12 +221,12 @@ class MicroCheckpointChiefResearcher(LlmAgent):
             print(f"⚠️ WARNING: Resumed operation '{operation_id}' has {len(progress.failed_steps)} failed steps.")
             
             # Check if we're in a retry loop after validation feedback
-            validation_status = ctx.session.state.get('validation_status', '')
-            revision_reason = ctx.session.state.get('revision_reason', '')
+            validation_status = ctx.session.state.get('domi_validation_status', '')
+            revision_reason = ctx.session.state.get('domi_revision_reason', '')
             
             if validation_status in ['needs_revision', 'needs_revision_after_parallel_validation']:
                 if revision_reason == 'parallel_validation_critical_issues':
-                    issues_count = ctx.session.state.get('parallel_validation_issues_count', 0)
+                    issues_count = ctx.session.state.get('domi_parallel_validation_issues_count', 0)
                     print(f"♻️ Detected retry after parallel validation ({issues_count} critical issues) - starting fresh")
                 else:
                     print("♻️ Detected retry after validation feedback - starting fresh instead of resuming failed operation")
@@ -243,7 +244,7 @@ class MicroCheckpointChiefResearcher(LlmAgent):
     async def _execute_planning_step(self, ctx: InvocationContext, step_config: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a single, real planning step by generating a file."""
         from ..utils.task_loader import load_task_description
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
         task_description = load_task_description(task_id)
 
         prompt_template = f"""
@@ -326,11 +327,11 @@ class MicroCheckpointChiefResearcher(LlmAgent):
     
     async def _create_planning_summary(self, ctx: InvocationContext, results: List[Dict[str, Any]]):
         """Create a summary of all planning steps."""
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
         outputs_dir = config.get_outputs_dir(task_id)
         
         summary = {
-            "task_id": task_id,
+            "domi_task_id": task_id,
             "total_planning_steps": len(results),
             "successful_steps": len([r for r in results if r.get("status") == "completed"]),
             "failed_steps": len([r for r in results if r.get("status") == "failed"]),
@@ -349,8 +350,8 @@ class MicroCheckpointChiefResearcher(LlmAgent):
             json.dump(summary, f, indent=2, default=str)
         
         # Update session state
-        ctx.session.state['planning_summary_artifact'] = summary_path
-        ctx.session.state['micro_checkpoints_enabled'] = True
+        ctx.session.state['domi_planning_summary_artifact'] = summary_path
+        ctx.session.state['domi_micro_checkpoints_enabled'] = True
         
         print(f"💾 Planning micro-checkpoint summary: {summary_path}")
 

@@ -405,6 +405,28 @@ class MicroCheckpointManager:
             print(f"✓ Marked operation complete: {operation_id}")
         else:
             print(f"⚠️  Operation not in registry: {operation_id}")
+    
+    def clear_operation(self, operation_id: str):
+        """Clear/delete a failed operation checkpoint to allow fresh restart."""
+        # Remove from registry if present
+        if operation_id in self.operation_registry:
+            del self.operation_registry[operation_id]
+        
+        # Delete the checkpoint file
+        operation_path = os.path.join(
+            self.micro_checkpoints_dir,
+            f"operation_{operation_id}.json"
+        )
+        
+        if os.path.exists(operation_path):
+            try:
+                os.remove(operation_path)
+                print(f"🧹 Cleared operation checkpoint: {operation_id}")
+            except Exception as e:
+                print(f"⚠️  Failed to clear operation {operation_id}: {e}")
+        
+        if self.current_operation == operation_id:
+            self.current_operation = None
 
 
 # Global micro-checkpoint manager instance

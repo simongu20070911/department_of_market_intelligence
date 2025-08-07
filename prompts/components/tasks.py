@@ -139,8 +139,27 @@ Use your tools to understand the current environment:
     - `success_criteria`: Specific, measurable completion conditions
     - `can_fail_independently`: Boolean - if True, failure doesn't block parallel tasks
     
-4.  Assemble task objects into JSON array, ensuring `parallel_group` assignments maximize concurrency.
-5.  Use `write_file` to save to `{outputs_dir}/planning/implementation_manifest.json`."""
+4.  Assemble task objects into a VALID JSON structure with this format:
+    ```json
+    {
+      "research_plan_artifact": "{outputs_dir}/planning/research_plan_v0.md",
+      "tasks": [
+        // Array of task objects - each fully expanded
+      ]
+    }
+    ```
+
+5.  **CRITICAL JSON REQUIREMENTS:**
+    - Generate ONLY valid, parseable JSON - no JavaScript code!
+    - NO spread operators (...), NO Array.from(), NO template literals with backticks
+    - NO arrow functions, NO .map() or other JavaScript methods
+    - If you need 10 similar tasks, write out all 10 task objects explicitly
+    - Each task must be a complete, standalone JSON object
+    - Use proper JSON syntax: double quotes for strings, no trailing commas
+    - Boolean values must be lowercase: true/false (not True/False)
+    
+6.  Use `write_file` to save the VALID JSON to `{outputs_dir}/planning/implementation_manifest.json`.
+7.  The file MUST be parseable by standard JSON parsers - it will be validated!"""
 
 GENERATE_RESULTS_EXTRACTION_PLAN_TASK = """### Task: 'generate_results_extraction_plan' ###
 If `state['current_task']` is 'generate_results_extraction_plan':
@@ -183,7 +202,12 @@ JUNIOR_VALIDATOR_CORE_TASK = """### ARTIFACT TO VALIDATE ###
 {research_plan}
 
 1. Review the artifact content provided above (type: {validation_context?})
-2. Apply context-specific validation based on the artifact type:
+2. **IF VALIDATING implementation_manifest**: FIRST verify JSON validity:
+   - Attempt to parse the content as JSON
+   - If parsing fails, mark as CRITICAL ERROR
+   - Look for JavaScript code that shouldn't be in JSON
+   - Check for proper JSON syntax (quotes, commas, booleans)
+3. Apply context-specific validation based on the artifact type:
 
 {context_specific_prompt}"""
 

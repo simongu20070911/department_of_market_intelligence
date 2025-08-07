@@ -168,22 +168,22 @@ class ValidationContextManager:
             Modified session state with validation context
         """
         # We can determine context from the current task and phase
-        current_task = session_state.get('current_task', '')
-        current_phase = session_state.get('current_phase', '')
-        artifact_path = session_state.get('artifact_to_validate', '')
+        current_task = session_state.get('domi_current_task', '')
+        current_phase = session_state.get('domi_current_phase', '')
+        artifact_path = session_state.get('domi_artifact_to_validate', '')
         
         context_type = "unknown"
         confidence = 0.0
 
         # Direct context determination based on workflow phase and task
         # Order matters - check most specific first
-        if 'implementation_plan' in current_task or 'generate_implementation_plan' in current_task or (current_phase == 'implementation' and 'orchestrator' in current_task.lower()):
+        if 'implementation_plan' in current_task or 'generate_implementation_plan' in current_task or 'orchestrate' in current_task.lower() or (current_phase == 'implementation' and 'orchestrator' in current_task.lower()):
             context_type = 'implementation_manifest'
             confidence = 1.0
         elif 'results' in current_task or 'extraction' in current_task:
             context_type = 'results_extraction'
             confidence = 1.0
-        elif current_phase == 'planning' or 'plan' in current_task:
+        elif current_phase == 'planning' or (current_phase != 'implementation' and 'plan' in current_task):
             context_type = 'research_plan'
             confidence = 1.0
         elif current_phase == 'implementation' and 'code' in current_task:
@@ -197,8 +197,8 @@ class ValidationContextManager:
         if context_type == "unknown" and artifact_path:
             context_type, confidence = cls.detect_validation_context(artifact_path)
         
-        session_state['validation_context'] = context_type
-        session_state['validation_confidence'] = confidence # Set confidence for logging
+        session_state['domi_validation_context'] = context_type
+        session_state['domi_validation_confidence'] = confidence # Set confidence for logging
         print(f"🎯 Validation Context: {context_type} (from {current_phase}/{current_task})")
         
         return session_state

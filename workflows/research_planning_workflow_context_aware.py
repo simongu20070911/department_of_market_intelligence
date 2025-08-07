@@ -9,12 +9,13 @@ import asyncio
 
 from ..agents.chief_researcher import get_chief_researcher_agent
 from ..agents.validators import (
-    get_junior_validator_agent, 
-    get_senior_validator_agent, 
+    get_junior_validator_agent,
+    get_senior_validator_agent,
     MetaValidatorCheckAgent,
     ParallelFinalValidationAgent
 )
 from ..utils.validation_context import ValidationContextManager
+from ..utils.phase_manager import WorkflowPhase, enhanced_phase_manager
 from .. import config
 
 
@@ -34,9 +35,9 @@ class ContextAwareValidationWrapper(BaseAgent):
         ctx.session.state = ValidationContextManager.prepare_validation_state(ctx.session.state)
         
         # Log context detection
-        artifact = ctx.session.state.get('artifact_to_validate', 'unknown')
-        context = ctx.session.state.get('validation_context', 'unknown')
-        confidence = ctx.session.state.get('validation_confidence', 0.0)
+        artifact = ctx.session.state.get('domi_artifact_to_validate', 'unknown')
+        context = ctx.session.state.get('domi_validation_context', 'unknown')
+        confidence = ctx.session.state.get('domi_validation_confidence', 0.0)
         
         print(f"\n🔍 VALIDATION CONTEXT DETECTION:")
         print(f"   Artifact: {artifact}")
@@ -81,19 +82,19 @@ class ContextAwareAgentWrapper(BaseAgent):
             import os
             import re
             
-            task_id = ctx.session.state.get('task_id', config.TASK_ID)
+            task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
             outputs_dir = config.get_outputs_dir(task_id)
             
             # Check if we just completed a refinement task
-            current_task = ctx.session.state.get('current_task', '')
-            expected_version = ctx.session.state.get('plan_version', 0)
+            current_task = ctx.session.state.get('domi_current_task', '')
+            expected_version = ctx.session.state.get('domi_plan_version', 0)
             
             if current_task == 'refine_plan':
                 # For refinement, look for the specific version that should have been created
                 expected_plan = f"{outputs_dir}/planning/research_plan_v{expected_version}.md"
                 if os.path.exists(expected_plan):
-                    ctx.session.state['plan_artifact_name'] = expected_plan
-                    ctx.session.state['artifact_to_validate'] = expected_plan
+                    ctx.session.state['domi_plan_artifact_name'] = expected_plan
+                    ctx.session.state['domi_artifact_to_validate'] = expected_plan
                     print(f"📎 Wrapper found refined plan v{expected_version}: {os.path.basename(expected_plan)}")
                 else:
                     print(f"⚠️  ERROR: Chief Researcher did not create expected plan v{expected_version}")
@@ -108,9 +109,9 @@ class ContextAwareAgentWrapper(BaseAgent):
                         latest_version = get_version_from_path(latest_plan)
                         print(f"   Latest plan found: v{latest_version}")
                         # Update state to reflect reality
-                        ctx.session.state['plan_version'] = latest_version
-                        ctx.session.state['plan_artifact_name'] = latest_plan
-                        ctx.session.state['artifact_to_validate'] = latest_plan
+                        ctx.session.state['domi_plan_version'] = latest_version
+                        ctx.session.state['domi_plan_artifact_name'] = latest_plan
+                        ctx.session.state['domi_artifact_to_validate'] = latest_plan
             else:
                 # For initial generation, find the latest plan
                 plan_files = glob.glob(f"{outputs_dir}/planning/research_plan_v*.md")
@@ -123,33 +124,33 @@ class ContextAwareAgentWrapper(BaseAgent):
 
                     latest_plan = max(plan_files, key=get_version_from_path)
                     
-                    ctx.session.state['plan_artifact_name'] = latest_plan
-                    ctx.session.state['artifact_to_validate'] = latest_plan
+                    ctx.session.state['domi_plan_artifact_name'] = latest_plan
+                    ctx.session.state['domi_artifact_to_validate'] = latest_plan
                     print(f"📎 Wrapper found latest plan and set for validation: {os.path.basename(latest_plan)}")
                 else:
                     # --- FIX: Prevent validator from running on a non-existent file ---
                     # This makes the point of failure much clearer.
                     print(f"⚠️  Wrapper could not find any research plan files in {outputs_dir}/planning/")
                     # Set a clear "not found" state instead of a path that will fail later
-                    ctx.session.state['artifact_to_validate'] = "FILE_NOT_FOUND" 
+                    ctx.session.state['domi_artifact_to_validate'] = "FILE_NOT_FOUND"
                     # --- END FIX ---
 
         if self.name == "ContextAwareOrchestrator":
             # The orchestrator creates a single manifest file, so we can use a fixed path
             # but we ensure it's set correctly for the validator.
             import os
-            task_id = ctx.session.state.get('task_id', config.TASK_ID)
+            task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
             outputs_dir = config.get_outputs_dir(task_id)
-            manifest_path = f"{outputs_dir}/planning/implementation_manifest.json"
+            manifest_path = f"{outputs_dir}/implementation/orchestration_plan.json"
             
             if os.path.exists(manifest_path):
-                ctx.session.state['implementation_manifest_artifact'] = manifest_path
-                ctx.session.state['artifact_to_validate'] = manifest_path
+                ctx.session.state['domi_implementation_manifest_artifact'] = manifest_path
+                ctx.session.state['domi_artifact_to_validate'] = manifest_path
                 print(f"📎 Wrapper confirmed manifest and set for validation: {os.path.basename(manifest_path)}")
             else:
                 print(f"⚠️  Wrapper could not find the implementation manifest at {manifest_path}")
                 # Set it anyway for the validator to report it's missing
-                ctx.session.state['artifact_to_validate'] = manifest_path
+                ctx.session.state['domi_artifact_to_validate'] = manifest_path
 
 
 def get_context_aware_research_planning_workflow():
@@ -215,8 +216,16 @@ def get_context_aware_research_planning_workflow():
             self._max_parallel_iterations = 3
         
         async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+            # Phase guard - only run in planning phase
+            current_phase_str = ctx.session.state.get('domi_current_phase', 'research_planning')
+            current_phase = WorkflowPhase.from_string(current_phase_str)
+            if not current_phase or not current_phase.name.startswith('RESEARCH'):
+                print(f"⚠️ ParallelValidationFeedbackLoop called in wrong phase: {current_phase.value if current_phase else 'unknown'}")
+                print("   This workflow is for research planning only, not implementation manifest planning")
+                return
+            
             for iteration in range(self._max_parallel_iterations):
-                print(f"\n🔄 Parallel validation feedback iteration {iteration + 1}/{self._max_parallel_iterations}")
+                print(f"\n🔄 [RESEARCH PLANNING] Parallel validation feedback iteration {iteration + 1}/{self._max_parallel_iterations}")
                 
                 # Run the planning loop
                 async for event in planning_loop.run_async(ctx):
@@ -227,14 +236,14 @@ def get_context_aware_research_planning_workflow():
                     yield event
                 
                 # Check parallel validation results
-                validation_status = ctx.session.state.get('validation_status', '')
-                consolidated_issues = ctx.session.state.get('consolidated_validation_issues', [])
+                validation_status = ctx.session.state.get('domi_validation_status', '')
+                consolidated_issues = ctx.session.state.get('domi_consolidated_validation_issues', [])
                 
                 if validation_status == 'critical_error' and consolidated_issues:
                     print(f"\n⚠️  Parallel validation found {len(consolidated_issues)} critical issues")
                     
                     # Save consolidated issues to a file for Chief Researcher to read
-                    task_id = ctx.session.state.get("task_id") or config.TASK_ID
+                    task_id = ctx.session.state.get("domi_task_id") or config.TASK_ID
                     outputs_dir = config.get_outputs_dir(task_id)
                     critiques_dir = f"{outputs_dir}/planning/critiques"
                     
@@ -277,10 +286,10 @@ def get_context_aware_research_planning_workflow():
                     print(f"📝 Saved parallel validation feedback to {parallel_feedback_path}")
                     
                     # Reset validation status for next iteration
-                    ctx.session.state['validation_status'] = 'needs_revision_after_parallel_validation'
-                    ctx.session.state['validation_context'] = 'research_plan'
-                    ctx.session.state['revision_reason'] = 'parallel_validation_critical_issues'
-                    ctx.session.state['parallel_validation_issues_count'] = len(consolidated_issues)
+                    ctx.session.state['domi_validation_status'] = 'needs_revision_after_parallel_validation'
+                    ctx.session.state['domi_validation_context'] = 'research_plan'
+                    ctx.session.state['domi_revision_reason'] = 'parallel_validation_critical_issues'
+                    ctx.session.state['domi_parallel_validation_issues_count'] = len(consolidated_issues)
                     
                     # Continue to next iteration if not at max
                     if iteration < self._max_parallel_iterations - 1:
@@ -369,11 +378,11 @@ def get_context_aware_orchestrator_workflow():
                 yield event
             
             # After loop completes, check if we need to set the max retries flag
-            validation_status = ctx.session.state.get('validation_status', 'unknown')
+            validation_status = ctx.session.state.get('domi_validation_status', 'unknown')
             if validation_status != 'approved':
                 print(f"⚠️  Orchestrator loop completed without approval - setting max retries flag")
-                ctx.session.state['orchestrator_max_retries_reached'] = True
-                ctx.session.state['orchestrator_iteration_count'] = max_iterations
+                ctx.session.state['domi_orchestrator_max_retries_reached'] = True
+                ctx.session.state['domi_orchestrator_iteration_count'] = max_iterations
     
     orchestrator_loop_with_fallback = LoopResultHandler(name="OrchestratorLoopHandler")
     

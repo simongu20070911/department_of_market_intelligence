@@ -43,8 +43,8 @@ class MicroCheckpointOrchestrator(LlmAgent):
             return
         
         # Use a unique key to track if this pre-orchestration has been done
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
-        validation_version = ctx.session.state.get('validation_version', 0)
+        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
+        validation_version = ctx.session.state.get('domi_validation_version', 0)
         orchestration_executed_key = f"orchestrator_planning_executed_v{validation_version}_for_{task_id}"
 
         if ctx.session.state.get(orchestration_executed_key):
@@ -69,7 +69,7 @@ class MicroCheckpointOrchestrator(LlmAgent):
             return
         
         # Get task info from session state
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
         outputs_dir = config.get_outputs_dir(task_id)
         
         # Define orchestration steps
@@ -198,7 +198,7 @@ class MicroCheckpointOrchestrator(LlmAgent):
     
     async def _execute_orchestration_step(self, ctx: InvocationContext, step_config: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a single, real orchestration step by generating a file."""
-        plan_path = ctx.session.state.get('plan_artifact_name')
+        plan_path = ctx.session.state.get('domi_plan_artifact_name')
         if not plan_path or not os.path.exists(plan_path):
             raise FileNotFoundError("Approved research plan artifact not found in session state.")
         
@@ -235,25 +235,26 @@ class MicroCheckpointOrchestrator(LlmAgent):
 
     async def _execute_step_with_llm(self, ctx: InvocationContext, step_config: Dict[str, Any], prompt: str) -> Dict[str, Any]:
         """Generic helper to execute a step that generates a file via LLM."""
+        # --- FIX: Import necessary ADK/GenAI types ---
+        from google.genai.types import Content, Part
+        
         step_name = step_config.get("name", "Unknown_Step")
         filename = step_config.get("filename", step_config.get("expected_outputs", ["unknown.out"])[0])
         
         print(f"   🧠 Generating content for: {step_name}")
         
-        # Generate content using LiteLLM's acompletion method
-        messages = [{"role": "user", "content": prompt}]
-        response = await self.model.acompletion(messages=messages)
+        # --- FIX: Replace the incorrect `acompletion` call with the standard ADK method ---
+        request_content = Content(parts=[Part(text=prompt)])
+        content_to_write = ""
         
-        # Extract content from LiteLLM response
-        # Handle streaming response if needed
-        if hasattr(response, '__aiter__'):  # It's a streaming response
-            content_parts = []
-            async for chunk in response:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    content_parts.append(chunk.choices[0].delta.content)
-            content_to_write = ''.join(content_parts).strip()
-        else:  # Regular response
-            content_to_write = response.choices[0].message.content.strip()
+        # The generate_content_async method returns a stream of LlmResponse objects
+        # This is the correct, standard way to interact with the model in ADK.
+        async for llm_response in self.model.generate_content_async(request_content):
+            if llm_response.text:
+                content_to_write += llm_response.text
+        
+        content_to_write = content_to_write.strip()
+        # --- END FIX ---
 
         # Clean up code blocks if the model wraps the output
         if content_to_write.startswith("```"):
@@ -263,13 +264,14 @@ class MicroCheckpointOrchestrator(LlmAgent):
 
         print(f"   ✍️ Writing content to: {filename}")
         write_tool = self._find_tool("write_file")
-        # run_async is a coroutine that returns an async generator
+        
+        # The tool call logic is correct, just needs the corrected content.
         tool_event_generator = write_tool.run_async(
             args={'path': filename, 'content': content_to_write},
             tool_context=None
         )
         
-        # Now iterate over the events to consume the generator and execute the tool
+        # Consume the generator to ensure the tool call completes
         async for _ in tool_event_generator:
             pass
 
@@ -284,11 +286,11 @@ class MicroCheckpointOrchestrator(LlmAgent):
     
     async def _create_orchestration_summary(self, ctx: InvocationContext, results: List[Dict[str, Any]]):
         """Create a summary of all orchestration steps."""
-        task_id = ctx.session.state.get('task_id', config.TASK_ID)
+        task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
         outputs_dir = config.get_outputs_dir(task_id)
         
         summary = {
-            "task_id": task_id,
+            "domi_task_id": task_id,
             "total_orchestration_steps": len(results),
             "successful_steps": len([r for r in results if r.get("status") == "completed"]),
             "failed_steps": len([r for r in results if r.get("status") == "failed"]),
@@ -307,8 +309,8 @@ class MicroCheckpointOrchestrator(LlmAgent):
             json.dump(summary, f, indent=2, default=str)
         
         # Update session state
-        ctx.session.state['orchestration_summary_artifact'] = summary_path
-        ctx.session.state['micro_checkpoints_enabled'] = True
+        ctx.session.state['domi_orchestration_summary_artifact'] = summary_path
+        ctx.session.state['domi_micro_checkpoints_enabled'] = True
         
         print(f"💾 Orchestration micro-checkpoint summary: {summary_path}")
 
@@ -337,7 +339,7 @@ def get_orchestrator_agent():
         model=get_llm_model(config.ORCHESTRATOR_MODEL),
         instruction_provider=instruction_provider,
         tools=tools,
-        output_key="implementation_manifest_artifact"
+        output_key="domi_implementation_manifest_artifact"
     )
     
     return agent

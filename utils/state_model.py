@@ -8,11 +8,12 @@ from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import datetime
 import os
+from .phase_manager import WorkflowPhase
 
 
 class TaskInfo(BaseModel):
     """Information about a coding or analysis task."""
-    task_id: str
+    domi_task_id: str
     description: str
     dependencies: List[str] = Field(default_factory=list)
     status: Literal["pending", "in_progress", "completed", "failed"] = "pending"
@@ -67,80 +68,74 @@ class SessionState(BaseModel):
     """
     
     # Task identification
-    task_id: str = Field(description="Unique identifier for the research task")
-    current_date: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d"))
+    domi_task_id: str = Field(description="Unique identifier for the research task")
+    domi_current_date: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d"))
     
     # Task input file
-    task_file_path: Optional[str] = Field(
+    domi_task_file_path: Optional[str] = Field(
         default=None,
         description="Path to the original task description markdown file"
     )
     
     # Workflow phase tracking
-    current_phase: Literal[
-        "planning", 
-        "implementation", 
-        "execution", 
-        "results_extraction", 
-        "final_report"
-    ] = "planning"
-    current_task: Optional[str] = Field(
-        default=None, 
+    domi_current_phase: str = WorkflowPhase.RESEARCH_PLANNING.value
+    domi_current_task: Optional[str] = Field(
+        default=None,
         description="Current sub-task being executed"
     )
     
     # Research planning artifacts (file paths only)
-    plan_artifact_name: Optional[str] = Field(
+    domi_plan_artifact_name: Optional[str] = Field(
         default=None,
         description="Path to current research plan markdown file"
     )
-    plan_version: int = Field(
+    domi_plan_version: int = Field(
         default=0,
         description="Version number of the research plan"
     )
     
     # Implementation artifacts (file paths only)
-    implementation_manifest_artifact: Optional[str] = Field(
+    domi_implementation_manifest_artifact: Optional[str] = Field(
         default=None,
         description="Path to implementation manifest JSON"
     )
-    results_extraction_script_artifact: Optional[str] = Field(
+    domi_results_extraction_script_artifact: Optional[str] = Field(
         default=None,
         description="Path to results extraction script"
     )
     
     # Validation state
-    artifact_to_validate: Optional[str] = Field(
+    domi_artifact_to_validate: Optional[str] = Field(
         default=None,
         description="Path to artifact currently being validated"
     )
-    validation_info: ValidationInfo = Field(
+    domi_validation_info: ValidationInfo = Field(
         default_factory=ValidationInfo,
         description="Current validation state"
     )
     
     # Execution state
-    execution_info: ExecutionInfo = Field(
+    domi_execution_info: ExecutionInfo = Field(
         default_factory=ExecutionInfo,
         description="Current execution state"
     )
     
     # Coding tasks for parallel execution
-    coder_subtask: Optional[TaskInfo] = Field(
+    domi_coder_subtask: Optional[TaskInfo] = Field(
         default=None,
         description="Current coding task being executed"
     )
-    all_coding_tasks: List[TaskInfo] = Field(
+    domi_all_coding_tasks: List[TaskInfo] = Field(
         default_factory=list,
         description="All coding tasks from manifest"
     )
     
     # Final outputs (file paths only)
-    final_report_artifact: Optional[str] = Field(
+    domi_final_report_artifact: Optional[str] = Field(
         default=None,
         description="Path to final research report"
     )
-    final_results_artifact: Optional[str] = Field(
+    domi_final_results_artifact: Optional[str] = Field(
         default=None,
         description="Path to final results/data files"
     )
@@ -202,10 +197,10 @@ class SessionState(BaseModel):
         """Add a coding task to the list."""
         self.all_coding_tasks.append(task)
     
-    def get_coding_task_by_id(self, task_id: str) -> Optional[TaskInfo]:
+    def get_coding_task_by_id(self, domi_task_id: str) -> Optional[TaskInfo]:
         """Get a coding task by its ID."""
         for task in self.all_coding_tasks:
-            if task.task_id == task_id:
+            if task.domi_task_id == domi_task_id:
                 return task
         return None
     

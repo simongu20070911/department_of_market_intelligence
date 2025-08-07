@@ -17,6 +17,7 @@ from .coder_workflow import get_coder_workflow
 from .experiment_workflow import get_experiment_workflow
 from ..agents.orchestrator import get_orchestrator_agent
 from ..agents.experiment_executor import get_experiment_executor_agent
+from ..utils.phase_manager import WorkflowPhase, enhanced_phase_manager
 from .. import config
 
 
@@ -64,26 +65,28 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         
         # Use simple ADK state access patterns
         
-        print("\n🎯 CONTEXT-AWARE IMPLEMENTATION WORKFLOW")
+        print("\n🎯 CONTEXT-AWARE IMPLEMENTATION WORKFLOW (MANIFEST PLANNING)")
         print("="*60)
+        print("   This workflow handles implementation manifest planning and execution")
+        print("   NOT to be confused with research planning workflow")
         
         # --- Step 1: Orchestrator Planning ---
-        implementation_manifest_path = ctx.session.state.get('implementation_manifest_artifact')
+        implementation_manifest_path = ctx.session.state.get('domi_implementation_manifest_artifact')
         # Check if an approved manifest already exists from a previous (or resumed) run
-        validation_status = ctx.session.state.get('validation_status', '')
+        validation_status = ctx.session.state.get('domi_validation_status', '')
         if implementation_manifest_path and os.path.exists(implementation_manifest_path) and validation_status.startswith('approved'):
             print(f"✅ Found approved implementation manifest (status: {validation_status}) from previous run: {os.path.basename(implementation_manifest_path)}")
             print("📋 Skipping orchestrator planning.")
             # Ensure the manifest path is correctly set for the next step
-            ctx.session.state['artifact_to_validate'] = implementation_manifest_path
+            ctx.session.state['domi_artifact_to_validate'] = implementation_manifest_path
         else:
             print("\n📋 Step 1: Orchestrator Planning (Context-Aware)")
             print("-"*40)
             
-            ctx.session.state['current_task'] = 'generate_implementation_plan'
+            ctx.session.state['domi_current_task'] = 'generate_implementation_plan'
             
             # Set task context for validation detection
-            task_id = ctx.session.state.get('task_id', config.TASK_ID)
+            task_id = ctx.session.state.get('domi_task_id', config.TASK_ID)
             outputs_dir = config.get_outputs_dir(task_id)
             
             # Set the research plan path for validators to reference
@@ -92,15 +95,15 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
             plan_files = glob.glob(f"{outputs_dir}/planning/research_plan_v*.md")
             if plan_files:
                 latest_plan = max(plan_files, key=lambda x: int(x.split('_v')[-1].split('.')[0]))
-                ctx.session.state['plan_artifact_name'] = latest_plan
+                ctx.session.state['domi_plan_artifact_name'] = latest_plan
                 print(f"📄 Found research plan: {latest_plan}")
             else:
                 print("⚠️  No research plan found - validators may have limited context")
             
             # Ensure basic session state is populated for nested workflows
-            ctx.session.state['task_id'] = task_id
-            ctx.session.state['outputs_dir'] = outputs_dir
-            ctx.session.state['current_phase'] = 'implementation'
+            ctx.session.state['domi_task_id'] = task_id
+            ctx.session.state['domi_outputs_dir'] = outputs_dir
+            ctx.session.state['domi_current_phase'] = WorkflowPhase.ORCHESTRATION_PLANNING.value
             print(f"🔧 Session state populated: task_id={task_id}, outputs_dir={outputs_dir}")
             
             # Don't pre-set artifact_to_validate - let orchestrator set it after creating the file
@@ -108,8 +111,8 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
             
             # Create checkpoint
             checkpoint_manager.create_checkpoint(
-                phase="implementation",
-                step="orchestrator_start",
+                phase=WorkflowPhase.ORCHESTRATION_PLANNING.value,
+                step="start",
                 session_state=ctx.session.state
             )
             
@@ -118,10 +121,10 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
                 yield event
             
             # Verify the manifest was actually created
-            implementation_manifest_path = ctx.session.state.get('implementation_manifest_artifact')
+            implementation_manifest_path = ctx.session.state.get('domi_implementation_manifest_artifact')
             if not implementation_manifest_path or not os.path.exists(implementation_manifest_path):
                 print(f"❌ Implementation manifest not created at expected path: {implementation_manifest_path}")
-                ctx.session.state['execution_status'] = 'critical_error'
+                ctx.session.state['domi_execution_status'] = 'critical_error'
                 from google.adk.events import Event
                 from google.genai.types import Content, Part
                 yield Event(
@@ -135,22 +138,22 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
             
             # Check if orchestrator planning was successful
             # Directly access the state dictionary, bypassing the proxy which might be stale.
-            validation_status = ctx.session.state.get('validation_status', 'unknown')
-            max_retries_reached = ctx.session.state.get('orchestrator_max_retries_reached', False)
+            validation_status = ctx.session.state.get('domi_validation_status', 'unknown')
+            max_retries_reached = ctx.session.state.get('domi_orchestrator_max_retries_reached', False)
             
             if validation_status != 'approved':
                 # Check if we should use fallback behavior
                 if max_retries_reached and config.IMPLEMENTATION_MANIFEST_VALIDATION_ALLOW_PASS_ON_MAX_RETRIES:
                     print(f"⚠️  Implementation manifest validation failed after max retries: {validation_status}")
                     print(f"🎯 Config toggle enabled: continuing workflow despite validation failure")
-                    print(f"📊 Iteration count: {ctx.session.state.get('orchestrator_iteration_count', 'unknown')}")
+                    print(f"📊 Iteration count: {ctx.session.state.get('domi_orchestrator_iteration_count', 'unknown')}")
                     # Set a warning status but allow continuation
-                    ctx.session.state['validation_status'] = 'approved_with_fallback'
+                    ctx.session.state['domi_validation_status'] = 'approved_with_fallback'
                 else:
                     print(f"❌ Orchestrator planning failed validation: {validation_status}")
                     if max_retries_reached:
                         print(f"❌ Max retries reached but fallback is disabled in config")
-                    ctx.session.state['execution_status'] = 'critical_error'
+                    ctx.session.state['domi_execution_status'] = 'critical_error'
                     # Need to yield something to make this an async generator
                     from google.adk.events import Event
                     from google.genai.types import Content, Part
@@ -161,7 +164,7 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
                     return
             
             # Update success message based on validation status
-            final_validation_status = ctx.session.state.get('validation_status', 'unknown')
+            final_validation_status = ctx.session.state.get('domi_validation_status', 'unknown')
             if final_validation_status == 'approved_with_fallback':
                 print("⚠️  Implementation manifest proceeding with fallback approval (max retries reached)")
             else:
@@ -170,23 +173,24 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         # Create a checkpoint after the orchestrator has successfully planned and been validated.
         # This prevents re-running the orchestrator if the workflow is interrupted later.
         checkpoint_manager.create_checkpoint(
-            phase="implementation",
-            step="orchestrator_complete",
+            phase=WorkflowPhase.ORCHESTRATION_REFINEMENT.value,
+            step="complete",
             session_state=ctx.session.state,
-            metadata={"manifest_path": ctx.session.state.get('implementation_manifest_artifact')}
+            metadata={"manifest_path": ctx.session.state.get('domi_implementation_manifest_artifact')}
         )
         
         # --- Step 2: Parallel Coding ---
         print("\n💻 Step 2: Parallel Coding Tasks")
         print("-"*40)
         
-        ctx.session.state['current_task'] = 'parallel_coding'
+        ctx.session.state['domi_current_phase'] = WorkflowPhase.CODING_ASSIGNMENT.value
+        ctx.session.state['domi_current_task'] = 'parallel_coding'
         
         # Load manifest to get tasks
-        manifest_path = ctx.session.state.get('implementation_manifest_artifact')
+        manifest_path = ctx.session.state.get('domi_implementation_manifest_artifact')
         if not manifest_path:
             print("❌ No implementation manifest found!")
-            ctx.session.state['execution_status'] = 'critical_error'
+            ctx.session.state['domi_execution_status'] = 'critical_error'
             # Need to yield something to make this an async generator
             from google.adk.events import Event
             from google.genai.types import Content, Part
@@ -204,7 +208,7 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
             print(f"⚠️  Coder workflow error (non-fatal): {e}")
             # Don't set critical_error - allow workflow to continue
             # The experiment executor can still run with existing code
-            ctx.session.state['coder_status'] = 'partial_failure'
+            ctx.session.state['domi_coder_status'] = 'partial_failure'
         
         # Each coder output is validated with context-aware validation
         # The coder workflow should set artifacts for validation
@@ -213,12 +217,12 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         print("\n🧪 Step 3: Experiment Execution")
         print("-"*40)
         
-        ctx.session.state['current_task'] = 'experiment_execution'
-        ctx.session.state['current_phase'] = 'execution'
+        ctx.session.state['domi_current_phase'] = WorkflowPhase.EXPERIMENT_SETUP.value
+        ctx.session.state['domi_current_task'] = 'experiment_execution'
         
         # Create checkpoint before experiments
         checkpoint_manager.create_checkpoint(
-            phase="execution",
+            phase=WorkflowPhase.EXPERIMENT_SETUP.value,
             step="start",
             session_state=ctx.session.state
         )
@@ -228,15 +232,15 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
             yield event
         
         # Validate experiment execution with context-aware validation
-        execution_journal = ctx.session.state.get('execution_log_artifact')
+        execution_journal = ctx.session.state.get('domi_execution_log_artifact')
         if execution_journal:
-            ctx.session.state['artifact_to_validate'] = execution_journal
-            ctx.session.state['current_task'] = 'validate_experiment_execution'
+            ctx.session.state['domi_artifact_to_validate'] = execution_journal
+            ctx.session.state['domi_current_task'] = 'validate_experiment_execution'
             
             async for event in self._experiment_validation.run_async(ctx):
                 yield event
             
-            validation_status = ctx.session.state.get('validation_status', 'unknown')
+            validation_status = ctx.session.state.get('domi_validation_status', 'unknown')
             if validation_status != 'approved':
                 print(f"❌ Experiment execution failed validation: {validation_status}")
                 # May need to re-run experiments
@@ -245,38 +249,38 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
         print("\n📊 Step 4: Results Extraction (Context-Aware)")
         print("-"*40)
         
-        ctx.session.state['current_task'] = 'generate_results_extraction_plan'
-        ctx.session.state['current_phase'] = 'results_extraction'
+        ctx.session.state['domi_current_phase'] = WorkflowPhase.RESULTS_PLANNING.value
+        ctx.session.state['domi_current_task'] = 'generate_results_extraction_plan'
         
         # Orchestrator creates results extraction plan
         async for event in self._orchestrator_agent.run_async(ctx):
             yield event
         
         # Validate results extraction plan/code
-        extraction_script = ctx.session.state.get('results_extraction_script_artifact')
+        extraction_script = ctx.session.state.get('domi_results_extraction_script_artifact')
         if extraction_script:
-            ctx.session.state['artifact_to_validate'] = extraction_script
-            ctx.session.state['current_task'] = 'validate_results_extraction'
+            ctx.session.state['domi_artifact_to_validate'] = extraction_script
+            ctx.session.state['domi_current_task'] = 'validate_results_extraction'
             
             async for event in self._results_validation.run_async(ctx):
                 yield event
             
-            validation_status = ctx.session.state.get('validation_status', 'unknown')
+            validation_status = ctx.session.state.get('domi_validation_status', 'unknown')
             if validation_status != 'approved':
                 print(f"⚠️  Results extraction needs refinement: {validation_status}")
         
         # Execute the results extraction
         print("\n🔄 Executing results extraction...")
-        ctx.session.state['current_task'] = 'execute_results_extraction'
+        ctx.session.state['domi_current_task'] = 'execute_results_extraction'
         
         # Run experiment executor to execute the extraction script
         async for event in self._experiment_executor.run_async(ctx):
             yield event
         
         # Final checkpoint
-        results_artifact = ctx.session.state.get('final_results_artifact')
+        results_artifact = ctx.session.state.get('domi_final_results_artifact')
         checkpoint_manager.create_checkpoint(
-            phase="implementation",
+            phase=WorkflowPhase.RESULTS_VALIDATION.value,
             step="complete",
             session_state=ctx.session.state,
             metadata={
@@ -285,7 +289,7 @@ class ImplementationWorkflowAgentContextAware(BaseAgent):
             }
         )
         
-        ctx.session.state['execution_status'] = 'complete'
+        ctx.session.state['domi_execution_status'] = 'complete'
         print("\n✅ Context-Aware Implementation Workflow Complete!")
         print(f"📊 Results: {results_artifact}")
         print("🔍 All phases validated with context-specific criteria")

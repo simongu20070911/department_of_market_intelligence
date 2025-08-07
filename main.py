@@ -161,9 +161,14 @@ async def main(resume_from_checkpoint: str = None):
     # Initialize the global toolset before creating any agents
     await initialize_toolset()
 
-    # The root of our agentic system - using integrated context-aware validation
-    print("🔍 Using context-aware validation system")
-    root_agent = RootWorkflowAgentContextAware(name="MarketAlpha_Root")
+    # The root of our agentic system
+    if config.USE_SIMPLIFIED_WORKFLOW:
+        print("🔍 Using simplified workflow with centralized phase management")
+        from .workflows.root_workflow_simplified import get_simplified_root_workflow
+        root_agent = get_simplified_root_workflow()
+    else:
+        print("🔍 Using context-aware validation system")
+        root_agent = RootWorkflowAgentContextAware(name="MarketAlpha_Root")
 
     runner = Runner(
         agent=root_agent,
