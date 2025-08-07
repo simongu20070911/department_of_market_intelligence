@@ -40,12 +40,17 @@ class MicroCheckpointWrapper(BaseAgent):
         checkpoint_manager = CheckpointManager(task_id)
 
         # Always initialize the agent if not already done
-        if self._agent is None:
-            self._agent = self.agent_factory()
+        if getattr(self, '_agent', None) is None:
+            agent = self.agent_factory()
+            object.__setattr__(self, '_agent', agent)
 
+        agent = getattr(self, '_agent', None)
+        if agent is None:
+            raise RuntimeError("Failed to initialize agent")
+            
         if not config.ENABLE_MICRO_CHECKPOINTS:
             print(f"[{self.name}]: Micro-checkpoints disabled, running standard execution.")
-            async for event in self._agent.run_async(ctx):
+            async for event in agent.run_async(ctx):
                 yield event
             return
 
@@ -54,5 +59,5 @@ class MicroCheckpointWrapper(BaseAgent):
         
         # For now, just run the agent normally until full micro-checkpoint logic is implemented
         # TODO: Implement full micro-checkpoint logic with operation tracking
-        async for event in self._agent.run_async(ctx):
+        async for event in agent.run_async(ctx):
             yield event
