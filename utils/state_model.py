@@ -34,6 +34,14 @@ class DOMISessionState(BaseModel):
     # For metadata and other unstructured data
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+    def update(self, data: Dict[str, Any]) -> None:
+        """Updates the session state from a dictionary."""
+        for key, value in data.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+            else:
+                self.metadata[key] = value
+
     def to_checkpoint_dict(self) -> Dict[str, Any]:
         """Converts the Pydantic model to a dictionary suitable for checkpointing."""
         return self.model_dump(mode="json")

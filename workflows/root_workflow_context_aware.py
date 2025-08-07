@@ -74,21 +74,12 @@ class RootWorkflowAgentContextAware(BaseAgent):
             error_occurred = domi_state.metadata.get("error_occurred", False)
 
             next_phase = None
-            if error_occurred:
-                next_phase = enhanced_phase_manager.get_rollback_target(current_phase, "error")
-            elif validation_status == "rejected":
-                next_phase = enhanced_phase_manager.get_rollback_target(current_phase, "validation_failure")
-            elif validation_status == "approved":
-                # Find the correct next phase (could be multiple options)
-                if len(phase_config.next_phases) == 1:
-                    next_phase = phase_config.next_phases[0]
-                else:
-                    # TODO: Implement logic to choose between multiple next phases
-                    # For now, default to the first one
-                    logger.warning(f"Multiple next phases defined for {current_phase.value}. Defaulting to the first.")
-                    next_phase = phase_config.next_phases[0]
-            else: # Default transition on success
-                 next_phase = phase_config.next_phases[0] if phase_config.next_phases else None
+            # Determine the next phase based on the outcome
+            next_phase = enhanced_phase_manager.determine_next_phase(
+                current_phase,
+                validation_status,
+                error_occurred
+            )
 
 
             if next_phase and enhanced_phase_manager.can_transition(current_phase, next_phase):

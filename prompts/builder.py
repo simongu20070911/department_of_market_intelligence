@@ -120,7 +120,7 @@ def inject_preloaded_context_variables(template: str, ctx, agent_name: str) -> s
         from ..utils.agent_context_preloader import preload_context_for_agent
         
         try:
-            preloaded_context = preload_context_for_agent(agent_name, domi_state.dict())
+            preloaded_context = preload_context_for_agent(agent_name, domi_state.model_dump())
             domi_state.metadata['preloaded_context'] = preloaded_context
         except Exception as e:
             print(f"⚠️  Failed to pre-load context for {agent_name}: {e}")

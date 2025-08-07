@@ -23,56 +23,74 @@ from ..prompts.components.contexts import (
     SENIOR_VALIDATION_PROMPTS
 )
 from ..utils.logger import get_logger
+from ..utils.phase_manager import WorkflowPhase, enhanced_phase_manager
 
 logger = get_logger(__name__)
 
+class ContextAwareValidatorAgent(BaseAgent):
+    """
+    A wrapper agent that makes a validator LlmAgent context-aware
+    by using the full InvocationContext to build the instruction.
+    """
+    def __init__(self, agent_name: str, instruction_map: Dict[str, str], default_instruction: str, **kwargs):
+        super().__init__(name=agent_name, **kwargs)
+        self._agent_name = agent_name
+        self._instruction_map = instruction_map
+        self._default_instruction = default_instruction
 
-def _create_validator_agent(agent_name: str, instruction_map: Dict[str, str], default_instruction: str) -> LlmAgent:
-    """Generic factory for creating context-aware validator agents."""
-    from ..tools.toolset_registry import toolset_registry
-    from ..tools.json_validator import json_validator_tool
-
-    desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
-    tools = [desktop_commander_toolset, json_validator_tool]
-
-    def instruction_provider(ctx: ReadonlyContext) -> str:
+    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+        from ..tools.toolset_registry import toolset_registry
+        from ..tools.json_validator import json_validator_tool
         from ..prompts.builder import inject_template_variables_with_context_preloading
-        domi_state = get_domi_state(ctx)
-        context_type = domi_state.validation.validation_context
-        instruction = instruction_map.get(context_type, default_instruction)
-        return inject_template_variables_with_context_preloading(instruction, ctx, agent_name)
 
-    return LlmAgent(
-        model=get_llm_model(config.AGENT_MODELS["VALIDATOR"]),
-        name=agent_name,
-        instruction=instruction_provider,
-        tools=tools,
-        after_model_callback=ensure_end_of_output
-    )
+        # This agent now gets the full context, so get_domi_state will work correctly.
+        domi_state = get_domi_state(ctx)
+
+        def instruction_provider(readonly_ctx: ReadonlyContext) -> str:
+            # We use the domi_state captured from the outer scope.
+            context_type = domi_state.validation.validation_context
+            instruction = self._instruction_map.get(context_type, self._default_instruction)
+            
+            # Pass the full ctx to the preloader, not the readonly_ctx, to ensure access to the live session state.
+            return inject_template_variables_with_context_preloading(instruction, ctx, self._agent_name)
+
+        desktop_commander_toolset = toolset_registry.get_desktop_commander_toolset()
+        tools = [desktop_commander_toolset, json_validator_tool]
+
+        validator_llm_agent = LlmAgent(
+            model=get_llm_model(config.AGENT_MODELS["VALIDATOR"]),
+            name=f"{self._agent_name}_Llm",
+            instruction=instruction_provider,
+            tools=tools,
+            after_model_callback=ensure_end_of_output
+        )
+
+        # Run the inner LLM agent and yield its events.
+        async for event in validator_llm_agent.run_async(ctx):
+            yield event
 
 def get_junior_validator_agent():
     """Create a context-aware junior validator."""
-    return _create_validator_agent(
-        "Junior_Validator",
-        JUNIOR_VALIDATOR_INSTRUCTIONS,
-        JUNIOR_VALIDATOR_INSTRUCTIONS["research_plan"]
+    return ContextAwareValidatorAgent(
+        agent_name="Junior_Validator",
+        instruction_map=JUNIOR_VALIDATOR_INSTRUCTIONS,
+        default_instruction=JUNIOR_VALIDATOR_INSTRUCTIONS["research_plan"]
     )
 
 def get_senior_validator_agent():
     """Create a context-aware senior validator."""
-    return _create_validator_agent(
-        "Senior_Validator",
-        SENIOR_VALIDATOR_INSTRUCTIONS,
-        SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"]
+    return ContextAwareValidatorAgent(
+        agent_name="Senior_Validator",
+        instruction_map=SENIOR_VALIDATOR_INSTRUCTIONS,
+        default_instruction=SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"]
     )
-
 
 def get_meta_validator_check_agent():
     """Create a meta validator check agent."""
-    return _create_validator_agent(
-        "Meta_Validator_Check",
-        SENIOR_VALIDATOR_INSTRUCTIONS,
-        SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"]
+    return ContextAwareValidatorAgent(
+        agent_name="Meta_Validator_Check",
+        instruction_map=SENIOR_VALIDATOR_INSTRUCTIONS,
+        default_instruction=SENIOR_VALIDATOR_INSTRUCTIONS["research_plan"]
     )
 
 
@@ -94,7 +112,7 @@ def create_specialized_parallel_validator(validator_type: str, index: int, valid
     validator_config = PARALLEL_VALIDATOR_CONFIGS.get(config_key, PARALLEL_VALIDATOR_CONFIGS["research_plan"])
     validator_info = list(validator_config.values())[index % len(validator_config)]
     
-    from ..prompts.definitions.parallel_validator import PARALLEL_VALIDATOR_INSTRUCTION
+    from ..prompts.components.parallel_validator import PARALLEL_VALIDATOR_INSTRUCTION
     instruction_template = PARALLEL_VALIDATOR_INSTRUCTION.format(focus=validator_info['focus'])
 
     def instruction_provider(ctx: ReadonlyContext) -> str:

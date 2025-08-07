@@ -133,14 +133,18 @@ class AgentContextPreloader:
         outputs_dir = config.get_outputs_dir(task_id)
         
         # Build replacement map
+        # Handle nested validation and execution objects properly
+        validation_obj = session_state.get("validation", {})
+        execution_obj = session_state.get("execution", {})
+        
         replacements = {
             "{task_file_path}": session_state.get("task_file_path", f"{config.TASKS_DIR}/{task_id}.md"),
             "{outputs_dir}": outputs_dir,
-            "{artifact_to_validate}": session_state.get("artifact_to_validate", ""),
-            "{plan_artifact_name}": session_state.get("plan_artifact_name", ""),
-            "{implementation_manifest_artifact}": session_state.get("implementation_manifest_artifact", ""),
+            "{artifact_to_validate}": validation_obj.get("artifact_to_validate", ""),
+            "{plan_artifact_name}": validation_obj.get("plan_artifact_name", ""),
+            "{implementation_manifest_artifact}": execution_obj.get("implementation_manifest_artifact", ""),
             "{task_id}": task_id,
-            "{validation_version}": str(session_state.get("validation_version", 0)),
+            "{validation_version}": str(validation_obj.get("validation_version", 0)),
         }
         
         # Apply replacements

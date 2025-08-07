@@ -15,6 +15,7 @@ from ..utils.model_loader import get_llm_model
 from ..utils.state_adapter import get_domi_state, update_session_state
 from ..utils.checkpoint_manager import CheckpointManager
 from ..prompts.definitions.chief_researcher import CHIEF_RESEARCHER_INSTRUCTION
+from ..prompts.components.chief_researcher_tasks import GENERATE_INITIAL_PLAN_GUIDANCE
 
 
 class ChiefResearcherAgent(BaseAgent):
@@ -40,31 +41,10 @@ class ChiefResearcherAgent(BaseAgent):
                 CHIEF_RESEARCHER_INSTRUCTION, inner_ctx, "Chief_Researcher"
             )
             # Add explicit task guidance - be very clear about what needs to be done
-            task_guidance = f"""
-
-### YOUR CRITICAL TASK - MUST COMPLETE ###
-You are the Chief Researcher. Your job is to create the initial research plan.
-
-**STEP 1**: Create the planning directory
-- Tool name: mcp__desktop-commander__create_directory
-- Parameter: path = "{planning_dir}"
-
-**STEP 2**: Write the research plan 
-- Tool name: mcp__desktop-commander__write_file
-- Parameters:
-  - path = "{plan_path}"
-  - content = (your detailed research plan in markdown)
-  - mode = "rewrite"
-
-The research plan should be comprehensive and include:
-- Research objectives
-- Methodology 
-- Data sources
-- Analysis approach
-- Expected outcomes
-
-DO NOT just acknowledge the task - you MUST execute these tool calls to create the directory and write the file.
-"""
+            task_guidance = GENERATE_INITIAL_PLAN_GUIDANCE.format(
+                planning_dir=planning_dir,
+                plan_path=plan_path
+            )
             return base_instruction + task_guidance
         
         # Use an LlmAgent with the instruction provider
@@ -78,7 +58,11 @@ DO NOT just acknowledge the task - you MUST execute these tool calls to create t
         async for event in llm_agent.run_async(ctx):
             yield event
         
-        update_session_state(ctx, plan_artifact_name=plan_artifact_name)
+        update_session_state(
+            ctx,
+            plan_artifact_name=plan_artifact_name,
+            artifact_to_validate=plan_path
+        )
 
 
 def get_chief_researcher_agent():

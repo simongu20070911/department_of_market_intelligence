@@ -702,6 +702,31 @@ class EnhancedPhaseManager:
         
         # Default to first rollback phase
         return config.rollback_phases[0] if config.rollback_phases else WorkflowPhase.ERROR
+
+    def determine_next_phase(self, current_phase: WorkflowPhase, validation_status: str, error_occurred: bool) -> Optional[WorkflowPhase]:
+        """
+        Determines the next phase based on the current phase and execution outcome.
+        """
+        phase_config = self.get_phase_config(current_phase)
+        if not phase_config:
+            return WorkflowPhase.ERROR
+
+        if error_occurred:
+            return self.get_rollback_target(current_phase, "error")
+        
+        if validation_status == "rejected":
+            return self.get_rollback_target(current_phase, "validation_failure")
+        
+        if validation_status == "approved":
+            # Logic to handle multiple next phases can be expanded here
+            if len(phase_config.next_phases) > 1:
+                # For now, we'll default to the first success path.
+                # This could be a point of extension for more complex branching.
+                return phase_config.next_phases[0]
+            return phase_config.next_phases[0] if phase_config.next_phases else None
+
+        # Default transition on success (if no specific validation status is required)
+        return phase_config.next_phases[0] if phase_config.next_phases else None
     
     @classmethod
     def get_phase_by_task(cls, task_name: str) -> Optional[WorkflowPhase]:

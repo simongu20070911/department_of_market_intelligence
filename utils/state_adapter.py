@@ -22,14 +22,18 @@ def get_domi_state(ctx: InvocationContext) -> DOMISessionState:
 
 def update_session_state(ctx: InvocationContext, **kwargs):
     """
-    Updates the session state in a structured way.
+    Updates the session state in a structured way, handling nested models.
     """
     state = get_domi_state(ctx)
     for key, value in kwargs.items():
         if hasattr(state, key):
             setattr(state, key, value)
+        elif hasattr(state.validation, key):
+            setattr(state.validation, key, value)
+        elif hasattr(state.execution, key):
+            setattr(state.execution, key, value)
         else:
-            logger.warning(f"Attempted to set unknown attribute '{key}' on DOMISessionState.")
+            logger.warning(f"Attempted to set unknown attribute '{key}' on DOMISessionState and its sub-models.")
 
 def transition_to_phase(ctx: InvocationContext, new_phase: str) -> bool:
     """

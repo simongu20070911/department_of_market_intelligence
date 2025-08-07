@@ -136,7 +136,7 @@ async def main(resume: bool = True):
     session = await session_service.create_session(
         app_name="ULTRATHINK_QUANTITATIVE",
         user_id="quant_team",
-        state=initial_state.dict()
+        state=initial_state.model_dump()
     )
     
     start_message = Content(parts=[Part(text="Begin the research process.")])

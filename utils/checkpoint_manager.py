@@ -218,7 +218,7 @@ class CheckpointManager:
 
         state_path = os.path.join(snapshot_dir, "domi_state.json")
         with open(state_path, 'w') as f:
-            json.dump(state.dict(), f, indent=2)
+            json.dump(state.model_dump(), f, indent=2)
 
         outputs_dir = config.get_outputs_dir(self.task_id)
         if os.path.exists(outputs_dir):
